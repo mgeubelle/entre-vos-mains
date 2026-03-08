@@ -4,7 +4,13 @@
         <field name="name">evm.case.list</field>
         <field name="model">evm.case</field>
         <field name="arch" type="xml">
-            <list string="Dossiers" default_order="create_date desc">
+            <list
+                string="Dossiers"
+                default_order="create_date desc"
+                decoration-info="state == 'pending'"
+                decoration-success="state == 'accepted'"
+                decoration-danger="state == 'refused'"
+            >
                 <field name="name"/>
                 <field name="state"/>
                 <field name="create_date"/>
@@ -12,7 +18,30 @@
                 <field name="patient_email"/>
                 <field name="requested_session_count"/>
                 <field name="authorized_session_count"/>
+                <field name="foundation_decision_date" optional="hide"/>
+                <field name="foundation_decision_user_id" optional="hide"/>
             </list>
+        </field>
+    </record>
+
+    <record id="evm_case_view_search" model="ir.ui.view">
+        <field name="name">evm.case.search</field>
+        <field name="model">evm.case</field>
+        <field name="arch" type="xml">
+            <search string="Recherche dossiers">
+                <field name="name"/>
+                <field name="patient_name"/>
+                <field name="patient_email"/>
+                <separator/>
+                <filter name="pending" string="Soumis" domain="[('state', '=', 'pending')]"/>
+                <filter name="accepted" string="Acceptes" domain="[('state', '=', 'accepted')]"/>
+                <filter name="refused" string="Refuses" domain="[('state', '=', 'refused')]"/>
+                <separator/>
+                <group name="group_by">
+                    <filter name="group_by_state" string="Statut" context="{'group_by': 'state'}"/>
+                    <filter name="group_by_kine" string="Kinesitherapeute" context="{'group_by': 'kine_user_id'}"/>
+                </group>
+            </search>
         </field>
     </record>
 
@@ -21,24 +50,74 @@
         <field name="model">evm.case</field>
         <field name="arch" type="xml">
             <form string="Dossier">
+                <header>
+                    <button
+                        name="action_accept"
+                        type="object"
+                        string="Accepter"
+                        class="oe_highlight"
+                        groups="evm.group_evm_fondation,evm.group_evm_admin"
+                        invisible="state != 'pending'"
+                    />
+                    <button
+                        name="action_refuse"
+                        type="object"
+                        string="Refuser"
+                        class="btn-secondary"
+                        groups="evm.group_evm_fondation,evm.group_evm_admin"
+                        invisible="state != 'pending'"
+                    />
+                    <field name="state" widget="statusbar" statusbar_visible="draft,pending,accepted,refused,closed"/>
+                </header>
                 <sheet>
+                    <div
+                        class="alert alert-info"
+                        role="status"
+                        groups="evm.group_evm_fondation,evm.group_evm_admin"
+                        invisible="state != 'pending' or not annual_session_cap"
+                    >
+                        <span class="fw-semibold">Plafond annuel configure:</span>
+                        <field name="annual_session_cap" class="oe_inline" readonly="1"/>
+                        <span class="ms-3 fw-semibold">Deja autorise:</span>
+                        <field name="annual_session_cap_used" class="oe_inline" readonly="1"/>
+                        <span class="ms-3 fw-semibold">Restant:</span>
+                        <field name="annual_session_cap_remaining" class="oe_inline" readonly="1"/>
+                    </div>
+                    <div
+                        class="alert alert-secondary"
+                        role="status"
+                        groups="evm.group_evm_fondation,evm.group_evm_admin"
+                        invisible="state != 'pending' or annual_session_cap"
+                    >
+                        Aucun plafond annuel n'est configure. L'acceptation n'est pas bloquee par quota.
+                    </div>
                     <group>
                         <group>
-                            <field name="name"/>
-                            <field name="state" readonly="1"/>
+                            <field name="name" readonly="state != 'draft'"/>
                             <field name="create_date" readonly="1"/>
                         </group>
                         <group>
-                            <field name="kine_user_id"/>
+                            <field name="kine_user_id" readonly="state != 'draft'"/>
                             <field name="patient_user_id"/>
-                            <field name="patient_name"/>
-                            <field name="patient_email"/>
+                            <field name="patient_name" readonly="state != 'draft'"/>
+                            <field name="patient_email" readonly="state != 'draft'"/>
                             <field name="patient_display_name" readonly="1"/>
                         </group>
                     </group>
                     <group string="Suivi">
-                        <field name="requested_session_count"/>
-                        <field name="authorized_session_count"/>
+                        <field name="requested_session_count" readonly="state != 'draft'"/>
+                        <field name="authorized_session_count" readonly="state != 'pending'"/>
+                    </group>
+                    <group string="Decision fondation" groups="evm.group_evm_fondation,evm.group_evm_admin">
+                        <group>
+                            <field name="foundation_decision_note" readonly="state != 'pending'"/>
+                            <field name="foundation_decision_date" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="annual_session_cap" readonly="1"/>
+                            <field name="annual_session_cap_remaining" readonly="1"/>
+                            <field name="foundation_decision_user_id" readonly="1"/>
+                        </group>
                     </group>
                 </sheet>
                 <chatter reload_on_follower="True"/>
@@ -50,6 +129,8 @@
         <field name="name">Dossiers</field>
         <field name="res_model">evm.case</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="evm_case_view_search"/>
+        <field name="context">{'search_default_pending': 1}</field>
     </record>
 
     <menuitem

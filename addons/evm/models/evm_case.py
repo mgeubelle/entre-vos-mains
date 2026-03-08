@@ -42,6 +42,39 @@ class EvmCase(models.Model):
         string="Seances autorisees",
         tracking=True,
     )
+    foundation_decision_note = fields.Text(
+        string="Note de decision",
+        tracking=True,
+        copy=False,
+    )
+    foundation_decision_user_id = fields.Many2one(
+        "res.users",
+        string="Decision prise par",
+        tracking=True,
+        readonly=True,
+        copy=False,
+    )
+    foundation_decision_date = fields.Date(
+        string="Date de decision",
+        tracking=True,
+        readonly=True,
+        copy=False,
+    )
+    annual_session_cap = fields.Integer(
+        string="Plafond annuel",
+        compute="_compute_annual_session_cap_metrics",
+        compute_sudo=True,
+    )
+    annual_session_cap_used = fields.Integer(
+        string="Seances deja autorisees",
+        compute="_compute_annual_session_cap_metrics",
+        compute_sudo=True,
+    )
+    annual_session_cap_remaining = fields.Integer(
+        string="Seances restantes sur le plafond",
+        compute="_compute_annual_session_cap_metrics",
+        compute_sudo=True,
+    )
     patient_display_name = fields.Char(
         compute="_compute_patient_display_name",
         compute_sudo=True,
@@ -58,11 +91,89 @@ class EvmCase(models.Model):
 
     _kine_protected_write_fields = {"state", "authorized_session_count", "kine_user_id", "patient_user_id"}
     _kine_draft_only_fields = {"name", "patient_name", "patient_email", "requested_session_count"}
+    _submitted_locked_write_fields = {"name", "kine_user_id", "patient_name", "patient_email", "requested_session_count"}
+    _decision_locked_write_fields = {
+        "authorized_session_count",
+        "foundation_decision_note",
+        "foundation_decision_user_id",
+        "foundation_decision_date",
+    }
 
     @api.depends("patient_user_id", "patient_user_id.partner_id.display_name", "patient_name", "name")
     def _compute_patient_display_name(self):
         for record in self:
             record.patient_display_name = record.patient_user_id.partner_id.display_name or record.patient_name or record.name
+
+    @api.depends("state", "authorized_session_count", "foundation_decision_date")
+    def _compute_annual_session_cap_metrics(self):
+        today = fields.Date.context_today(self)
+        years = {(record.foundation_decision_date or today).year for record in self}
+        annual_cap = self._get_annual_session_cap()
+        usage_by_year = self._get_annual_session_cap_usage_by_year(years)
+        for record in self:
+            current_year = (record.foundation_decision_date or today).year
+            used = usage_by_year.get(current_year, 0)
+            record.annual_session_cap = annual_cap
+            record.annual_session_cap_used = used
+            record.annual_session_cap_remaining = max(annual_cap - used, 0) if annual_cap else 0
+
+    @api.constrains("requested_session_count", "authorized_session_count")
+    def _check_session_counts_consistency(self):
+        for record in self:
+            if record.authorized_session_count < 0:
+                raise ValidationError(_("Le nombre de seances autorisees ne peut pas etre negatif."))
+            if record.authorized_session_count and record.authorized_session_count > record.requested_session_count:
+                raise ValidationError(
+                    _("Le nombre de seances autorisees ne peut pas depasser le nombre de seances demandees.")
+                )
+
+    def _get_annual_session_cap(self):
+        raw_value = self.env["ir.config_parameter"].sudo().get_param("evm.annual_session_cap", default="0")
+        try:
+            return max(int(raw_value or 0), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _get_annual_session_cap_usage_by_year(self, years=None):
+        accepted_cases = self.env["evm.case"].sudo().search([("state", "=", "accepted")])
+        usage_by_year = {}
+        for case in accepted_cases:
+            decision_date = case.foundation_decision_date or fields.Date.to_date(case.create_date)
+            if not decision_date:
+                continue
+            if years and decision_date.year not in years:
+                continue
+            usage_by_year.setdefault(decision_date.year, 0)
+            usage_by_year[decision_date.year] += case.authorized_session_count or 0
+        return usage_by_year
+
+    def _ensure_foundation_can_decide(self):
+        if not (
+            self.env.user.has_group("evm.group_evm_fondation") or self.env.user.has_group("evm.group_evm_admin")
+        ):
+            raise AccessError(_("Seul un membre de la fondation peut prendre cette decision."))
+
+    def _ensure_pending_cases(self):
+        if any(record.state != "pending" for record in self):
+            raise ValidationError(_("Seul un dossier soumis peut etre traite par la fondation."))
+
+    def _build_decision_message(self, decision, annual_cap_remaining=None):
+        self.ensure_one()
+        if decision == "accepted":
+            message = _(
+                "Dossier accepte par la fondation avec %(count)s seances autorisees.",
+                count=self.authorized_session_count,
+            )
+            if annual_cap_remaining is not None:
+                message += " " + _(
+                    "Plafond annuel restant: %(remaining)s seances.",
+                    remaining=annual_cap_remaining,
+                )
+        else:
+            message = _("Dossier refuse par la fondation.")
+        if self.foundation_decision_note:
+            message += " " + _("Note: %(note)s", note=self.foundation_decision_note)
+        return message
 
     @api.model
     def validate_submission_data(self, values):
@@ -111,8 +222,16 @@ class EvmCase(models.Model):
         return records
 
     def write(self, vals):
-        if self.env.user.has_group("evm.group_evm_kine") and not self.env.context.get("evm_allow_case_workflow_write"):
-            touched_fields = set(vals)
+        allow_workflow_write = self.env.context.get("evm_allow_case_workflow_write")
+        touched_fields = set(vals)
+        if "state" in vals and not allow_workflow_write:
+            raise AccessError(_("Le statut du dossier ne peut etre modifie que via une action metier."))
+        if not allow_workflow_write:
+            if touched_fields & self._submitted_locked_write_fields and any(record.state != "draft" for record in self):
+                raise AccessError(_("Les informations soumises du dossier ne peuvent plus etre modifiees apres l'envoi."))
+            if touched_fields & self._decision_locked_write_fields and any(record.state != "pending" for record in self):
+                raise AccessError(_("La decision de la fondation ne peut plus etre modifiee apres traitement du dossier."))
+        if self.env.user.has_group("evm.group_evm_kine") and not allow_workflow_write:
             if touched_fields & self._kine_protected_write_fields:
                 raise AccessError(_("Le kinesitherapeute ne peut pas modifier ce champ directement."))
             if touched_fields & self._kine_draft_only_fields and any(record.state != "draft" for record in self):
@@ -143,4 +262,55 @@ class EvmCase(models.Model):
                 }
             )
             record.message_post(body=_("Demande initiale soumise par le kinesitherapeute."))
+        return True
+
+    def action_accept(self):
+        self._ensure_foundation_can_decide()
+        self._ensure_pending_cases()
+
+        today = fields.Date.context_today(self)
+        annual_cap = self._get_annual_session_cap()
+        annual_cap_used = self._get_annual_session_cap_usage_by_year({today.year}).get(today.year, 0)
+
+        for record in self:
+            if record.authorized_session_count <= 0:
+                raise ValidationError(_("Veuillez definir explicitement les seances autorisees avant l'acceptation."))
+            if annual_cap and annual_cap_used + record.authorized_session_count > annual_cap:
+                remaining = max(annual_cap - annual_cap_used, 0)
+                raise ValidationError(
+                    _(
+                        "L'acceptation depasse le plafond annuel configure. "
+                        "Il reste %(remaining)s seances disponibles sur %(cap)s.",
+                        remaining=remaining,
+                        cap=annual_cap,
+                    )
+                )
+
+            remaining_after_accept = max(annual_cap - annual_cap_used - record.authorized_session_count, 0) if annual_cap else None
+            record.with_context(evm_allow_case_workflow_write=True).write(
+                {
+                    "state": "accepted",
+                    "foundation_decision_user_id": self.env.user.id,
+                    "foundation_decision_date": today,
+                }
+            )
+            record.message_post(body=record._build_decision_message("accepted", remaining_after_accept))
+            annual_cap_used += record.authorized_session_count
+        return True
+
+    def action_refuse(self):
+        self._ensure_foundation_can_decide()
+        self._ensure_pending_cases()
+
+        today = fields.Date.context_today(self)
+        for record in self:
+            record.with_context(evm_allow_case_workflow_write=True).write(
+                {
+                    "state": "refused",
+                    "authorized_session_count": 0,
+                    "foundation_decision_user_id": self.env.user.id,
+                    "foundation_decision_date": today,
+                }
+            )
+            record.message_post(body=record._build_decision_message("refused"))
         return True

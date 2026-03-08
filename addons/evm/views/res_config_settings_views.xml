@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="evm_res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.evm</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="Entre Vos Mains" name="evm" groups="evm.group_evm_admin">
+                    <block title="Gouvernance des seances" name="evm_sessions_governance">
+                        <setting
+                            id="evm_annual_session_cap_setting"
+                            string="Plafond annuel de seances"
+                            help="Bloque l'acceptation d'un dossier si le quota annuel configure serait depasse."
+                        >
+                            <field name="evm_annual_session_cap"/>
+                            <div class="text-muted">
+                                Definir `0` pour desactiver le controle du plafond annuel.
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

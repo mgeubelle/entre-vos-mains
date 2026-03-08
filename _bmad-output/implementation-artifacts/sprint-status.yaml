@@ -46,7 +46,7 @@ development_status:
   1-3-definir-les-roles-et-le-socle-de-securite-metier: done
   1-4-permettre-au-kinesitherapeute-d-acceder-a-son-espace-et-consulter-ses-dossiers: review
   1-5-permettre-au-kinesitherapeute-de-creer-un-dossier-de-prise-en-charge: done
-  1-6-permettre-a-la-fondation-de-revoir-et-decider-un-dossier: ready-for-dev
+  1-6-permettre-a-la-fondation-de-revoir-et-decider-un-dossier: done
   1-7-ouvrir-l-acces-patient-apres-acceptation-du-dossier: ready-for-dev
   epic-1-retrospective: optional
 
