@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="evm_website_homepage" inherit_id="website.homepage" name="EVM public homepage">
+        <xpath expr="//div[@id='wrap']" position="replace">
+            <div id="wrap" class="oe_structure evm-website">
+                <section class="evm-hero">
+                    <div class="container py-5">
+                        <div class="row align-items-center g-4 py-lg-5">
+                            <div class="col-lg-7">
+                                <span class="evm-eyebrow">Entre Vos Mains</span>
+                                <h1 class="display-4 fw-semibold mt-3">
+                                    Un parcours plus simple pour soutenir les soins de kinesitherapie
+                                </h1>
+                                <p class="lead mt-3 mb-0">
+                                    La fondation, le patient et le kinesitherapeute se retrouvent dans un espace clair
+                                    pour ouvrir un dossier, suivre les seances et transmettre les pieces utiles.
+                                </p>
+                                <div class="d-flex flex-wrap gap-3 mt-4">
+                                    <a class="btn btn-dark btn-lg" href="/my">Acceder au portail</a>
+                                    <a class="btn btn-outline-dark btn-lg" href="/#parcours">Comprendre le parcours</a>
+                                </div>
+                            </div>
+                            <div class="col-lg-5">
+                                <div class="evm-hero-panel">
+                                    <p class="evm-panel-title mb-3">Ce que le site public apporte</p>
+                                    <ul class="list-unstyled mb-0">
+                                        <li>Une entree publique claire avant la connexion</li>
+                                        <li>Un lien direct vers le portail securise</li>
+                                        <li>Un cadre simple pour expliquer les roles</li>
+                                        <li>Une base Website Odoo directement dans le module `evm`</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="parcours" class="evm-section">
+                    <div class="container py-5">
+                        <div class="row g-4 align-items-start">
+                            <div class="col-lg-4">
+                                <span class="evm-section-kicker">Parcours</span>
+                                <h2 class="h1 mt-2">Trois acteurs, un meme dossier, moins de friction</h2>
+                            </div>
+                            <div class="col-lg-8">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <article class="evm-card h-100">
+                                            <span class="evm-step">1</span>
+                                            <h3 class="h4 mt-3">Kinesitherapeute</h3>
+                                            <p class="mb-0">
+                                                Introduit un dossier et suit les prises en charge qu'il a initiees.
+                                            </p>
+                                        </article>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <article class="evm-card h-100">
+                                            <span class="evm-step">2</span>
+                                            <h3 class="h4 mt-3">Fondation</h3>
+                                            <p class="mb-0">
+                                                Revoit les dossiers, autorise les seances et traite les demandes.
+                                            </p>
+                                        </article>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <article class="evm-card h-100">
+                                            <span class="evm-step">3</span>
+                                            <h3 class="h4 mt-3">Patient</h3>
+                                            <p class="mb-0">
+                                                Consulte son dossier, depose ses documents et suit son remboursement.
+                                            </p>
+                                        </article>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="impact" class="evm-section evm-section-alt">
+                    <div class="container py-5">
+                        <div class="row g-4">
+                            <div class="col-lg-6">
+                                <h2 class="h1">Pourquoi ce website dans `evm`</h2>
+                                <p class="mb-0">
+                                    Le site public n'est plus un ajout de fin de projet. Il devient une partie du
+                                    module, au meme titre que le portail, afin d'offrir un point d'entree public
+                                    coherent, maintenable et directement deployable avec Odoo.
+                                </p>
+                            </div>
+                            <div class="col-lg-6">
+                                <div class="evm-checklist">
+                                    <div class="evm-checklist-item">Accueil public a la racine du site</div>
+                                    <div class="evm-checklist-item">Navigation publique minimale en francais</div>
+                                    <div class="evm-checklist-item">Lien clair vers `/my` et la connexion</div>
+                                    <div class="evm-checklist-item">Separation nette entre website public et portail authentifie</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="contact" class="evm-section">
+                    <div class="container py-5">
+                        <div class="row g-4 align-items-center">
+                            <div class="col-lg-7">
+                                <span class="evm-section-kicker">Prochaine etape</span>
+                                <h2 class="h1 mt-2">Acceder a votre espace</h2>
+                                <p class="mb-0">
+                                    Les utilisateurs autorises peuvent se connecter a leur portail pour consulter leur
+                                    dossier et les informations liees a leur role.
+                                </p>
+                            </div>
+                            <div class="col-lg-5 text-lg-end">
+                                <a class="btn btn-dark btn-lg" href="/web/login?redirect=/my">Se connecter</a>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </xpath>
+    </template>
+
+    <record id="website.menu_home" model="website.menu">
+        <field name="name">Accueil</field>
+    </record>
+
+    <record id="website.menu_contactus" model="website.menu">
+        <field name="name">Parcours</field>
+        <field name="url">/#parcours</field>
+        <field name="page_id" eval="False"/>
+    </record>
+
+    <record id="evm_menu_portal" model="website.menu">
+        <field name="name">Portail</field>
+        <field name="url">/my</field>
+        <field name="parent_id" ref="website.main_menu"/>
+        <field name="sequence" type="int">70</field>
+    </record>
+</odoo>

@@ -11,12 +11,18 @@ sont introduits progressivement au fil des stories.
     "category": "Services",
     "version": "19.0.1.0.0",
     "license": "LGPL-3",
-    "depends": ["base", "mail", "portal"],
+    "depends": ["base", "mail", "portal", "website"],
+    "assets": {
+        "website.assets_frontend": [
+            "evm/static/src/scss/website.scss",
+        ],
+    },
     "data": [
         "security/groups.xml",
         "security/ir.model.access.csv",
         "security/rules.xml",
         "views/evm_case_views.xml",
+        "views/website_templates.xml",
         "views/portal_templates.xml",
     ],
     "demo": [],

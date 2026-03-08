@@ -1,0 +1,137 @@
+.evm-website {
+    --evm-ink: #1f2a2a;
+    --evm-muted: #566363;
+    --evm-line: rgba(31, 42, 42, 0.12);
+    --evm-paper: #fffdf8;
+    --evm-paper-strong: #f4ede1;
+    --evm-accent: #d96f32;
+    --evm-shadow: 0 24px 60px rgba(31, 42, 42, 0.12);
+
+    color: var(--evm-ink);
+    background:
+        radial-gradient(circle at top left, rgba(217, 111, 50, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(72, 118, 105, 0.14), transparent 24%),
+        linear-gradient(180deg, #fffaf1 0%, #fffdf8 55%, #f9f4ea 100%);
+}
+
+.evm-hero,
+.evm-section {
+    position: relative;
+}
+
+.evm-eyebrow,
+.evm-section-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--evm-accent);
+}
+
+.evm-website h1,
+.evm-website h2,
+.evm-website h3 {
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.05;
+    color: var(--evm-ink);
+}
+
+.evm-website p,
+.evm-website li,
+.evm-website .btn {
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.evm-website p,
+.evm-website li {
+    color: var(--evm-muted);
+    font-size: 1.05rem;
+}
+
+.evm-hero-panel,
+.evm-card,
+.evm-checklist {
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid var(--evm-line);
+    border-radius: 1.5rem;
+    box-shadow: var(--evm-shadow);
+    backdrop-filter: blur(8px);
+}
+
+.evm-hero-panel {
+    padding: 1.75rem;
+}
+
+.evm-panel-title {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.3rem;
+    color: var(--evm-ink);
+}
+
+.evm-hero-panel li + li {
+    margin-top: 0.9rem;
+}
+
+.evm-section {
+    border-top: 1px solid rgba(31, 42, 42, 0.08);
+}
+
+.evm-section-alt {
+    background: linear-gradient(180deg, rgba(244, 237, 225, 0.82), rgba(255, 253, 248, 0));
+}
+
+.evm-card {
+    padding: 1.5rem;
+}
+
+.evm-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--evm-accent), #f1a36f);
+    color: #fff;
+    font-weight: 700;
+}
+
+.evm-checklist {
+    padding: 1.5rem;
+}
+
+.evm-checklist-item {
+    padding: 1rem 0;
+    color: var(--evm-ink);
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    font-weight: 600;
+}
+
+.evm-checklist-item + .evm-checklist-item {
+    border-top: 1px solid var(--evm-line);
+}
+
+.evm-website .btn-dark {
+    background: var(--evm-ink);
+    border-color: var(--evm-ink);
+}
+
+.evm-website .btn-outline-dark {
+    color: var(--evm-ink);
+    border-color: rgba(31, 42, 42, 0.25);
+}
+
+@media (max-width: 991.98px) {
+    .evm-hero-panel,
+    .evm-card,
+    .evm-checklist {
+        border-radius: 1.25rem;
+    }
+
+    .evm-website h1 {
+        font-size: 2.6rem;
+    }
+}

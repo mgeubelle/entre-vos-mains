@@ -62,7 +62,8 @@ NFR10: L’interface visible utilisateur doit être en français, tandis que le 
 - Les notifications V1 doivent couvrir au minimum les événements dossier accepté/refusé, demande soumise, demande à compléter, demande validée et demande payée.
 - Une auto-clôture des dossiers via cron est prévue après une durée définie par les règles métier.
 - Les vues, menus, aides et messages utilisateur doivent être en français; les valeurs techniques, noms de méthodes et champs restent en anglais.
-- Le site statique existant sera intégré dans une page `website` en fin de projet, hors cœur du MVP métier.
+- Le website public Odoo fait partie du module `evm` et ne doit plus rester un ajout de fin de projet.
+- Un MVP website public doit exister rapidement dans `evm`: homepage publique, navigation minimale, presentation du parcours et lien vers le portail.
 - Les exigences de conformité incluent l’évitement du stockage structuré de données médicales; les factures servent de preuve principale et le code INAMI peut n’apparaître que dans les documents.
 - Les politiques automatisées de rétention, suppression et anonymisation sont explicitement hors scope V1.
 - La cible d'accessibilite MVP est WCAG 2.2 AA sur les parcours critiques: creation de dossier cote kine, consultation du dossier et soumission de demande cote patient, revue dossier et revue demande cote fondation.

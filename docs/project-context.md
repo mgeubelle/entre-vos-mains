@@ -3,7 +3,9 @@
 ## Contexte
 
 - Ce dépôt contient des **add-ons Odoo 19 Community** (modules custom).
-- L’UI reste **dans Odoo** (Website/Portal, QWeb/OWL si nécessaire). Un **site statique existant** sera intégré dans une page `website` en fin de projet.
+- L’UI reste **dans Odoo** (Website/Portal, QWeb/OWL si nécessaire).
+- Le module `evm` embarque aussi le **website public** du projet: page d'accueil, navigation publique minimale et lien clair vers les parcours portail.
+- La reprise plus complete d'un site statique existant peut se faire ensuite, mais la presence d'un website public dans `evm` fait desormais partie du besoin immediat.
 
 ## Dépendances & environnement local
 

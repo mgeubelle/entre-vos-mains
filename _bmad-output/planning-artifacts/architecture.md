@@ -65,7 +65,9 @@ _Ce document se construit de façon collaborative, étape par étape. Les sectio
 
 ### Primary Technology Domain
 
-Add-ons Odoo 19 Community (Python) dans ce dépôt, avec UI via Website/Portal Odoo (QWeb/OWL si nécessaire). Pas de front séparé. Un site statique existant sera intégré dans une page `website` en fin de projet.
+Add-ons Odoo 19 Community (Python) dans ce dépôt, avec UI via Website/Portal Odoo (QWeb/OWL si nécessaire). Pas de front séparé.
+Le module `evm` porte aussi un website public Odoo minimal (homepage, navigation publique, lien vers le portail) en plus des surfaces portail authentifiées.
+La reprise plus complete d'un site statique existant peut etre realisee iterativement sur cette base Website, sans sortir du module `evm`.
 
 ### Technical Preferences (Project Context)
 
