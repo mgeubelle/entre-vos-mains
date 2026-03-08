@@ -1,3 +1,4 @@
+from odoo.exceptions import ValidationError
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase, new_test_user
 
@@ -45,3 +46,62 @@ class TestEvmCaseConsultation(TransactionCase):
         self.assertTrue(case.message_ids, "La creation du dossier doit produire une trace d'activite.")
         self.assertIn("Dossier cree", case.message_ids[0].body)
         self.assertEqual(case.patient_display_name, "Dossier historise")
+
+    def test_case_submission_moves_record_to_pending_and_tracks_initial_request(self):
+        case = self.env["evm.case"].create(
+            {
+                "kine_user_id": self.kine_user.id,
+                "patient_name": "Patient Creation",
+                "patient_email": "patient.creation@example.com",
+                "requested_session_count": 14,
+            }
+        )
+
+        case.action_submit_to_pending()
+
+        self.assertEqual(case.state, "pending")
+        self.assertEqual(case.name, "Patient Creation")
+        self.assertEqual(case.patient_display_name, "Patient Creation")
+        self.assertEqual(case.requested_session_count, 14)
+        bodies = case.message_ids.mapped("body")
+        self.assertTrue(
+            any("Demande initiale soumise" in body for body in bodies),
+            "La soumission doit laisser une trace exploitable dans l'historique.",
+        )
+
+    def test_case_submission_rejects_missing_or_invalid_required_values(self):
+        missing_values_case = self.env["evm.case"].create(
+            {
+                "kine_user_id": self.kine_user.id,
+            }
+        )
+        invalid_sessions_case = self.env["evm.case"].create(
+            {
+                "kine_user_id": self.kine_user.id,
+                "patient_name": "Patient Invalide",
+                "patient_email": "patient.invalide@example.com",
+                "requested_session_count": 0,
+            }
+        )
+
+        with self.assertRaisesRegex(ValidationError, "nom du patient"):
+            missing_values_case.action_submit_to_pending()
+        with self.assertRaisesRegex(ValidationError, "adresse e-mail"):
+            missing_values_case.write({"patient_name": "Patient Sans Email"})
+            missing_values_case.action_submit_to_pending()
+        with self.assertRaisesRegex(ValidationError, "nombre de seances"):
+            invalid_sessions_case.action_submit_to_pending()
+
+    def test_case_submission_rejects_non_draft_cases(self):
+        case = self.env["evm.case"].create(
+            {
+                "kine_user_id": self.kine_user.id,
+                "patient_name": "Patient Bloque",
+                "patient_email": "patient.bloque@example.com",
+                "requested_session_count": 8,
+                "state": "pending",
+            }
+        )
+
+        with self.assertRaisesRegex(ValidationError, "brouillon"):
+            case.action_submit_to_pending()

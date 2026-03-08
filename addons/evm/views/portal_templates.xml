@@ -3,14 +3,17 @@
     <template id="evm_portal_breadcrumbs" inherit_id="portal.portal_breadcrumbs" priority="30">
         <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
             <li
-                t-if="page_name == 'evm_cases' or page_name == 'evm_case'"
+                t-if="page_name == 'evm_cases' or page_name == 'evm_case' or page_name == 'evm_case_create'"
                 t-attf-class="breadcrumb-item #{'active' if page_name == 'evm_cases' else ''}"
             >
-                <a t-if="page_name == 'evm_case'" t-attf-href="/my/evm/cases?{{ keep_query() }}">Mes dossiers</a>
+                <a t-if="page_name == 'evm_case' or page_name == 'evm_case_create'" t-attf-href="/my/evm/cases?{{ keep_query() }}">Mes dossiers</a>
                 <t t-else="">Mes dossiers</t>
             </li>
             <li t-if="page_name == 'evm_case'" class="breadcrumb-item active">
                 <t t-esc="case.name"/>
+            </li>
+            <li t-if="page_name == 'evm_case_create'" class="breadcrumb-item active">
+                Creer un dossier
             </li>
         </xpath>
     </template>
@@ -34,6 +37,10 @@
             <t t-call="portal.portal_searchbar">
                 <t t-set="title">Mes dossiers</t>
             </t>
+
+            <div class="d-flex justify-content-end mb-3">
+                <a href="/my/evm/cases/new" class="btn btn-primary">Nouveau dossier</a>
+            </div>
 
             <div t-if="not cases" class="alert alert-warning" role="alert">
                 Aucun dossier n'est disponible pour votre compte.
@@ -133,6 +140,92 @@
                                 </div>
                             </div>
                             <p t-else="" class="text-muted mb-0">Aucune activite autorisee n'est encore disponible.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="evm_portal_my_case_create" name="Creation dossier kine">
+        <t t-call="portal.portal_layout">
+            <div class="row justify-content-center">
+                <div class="col-12 col-xl-8">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+                                <div>
+                                    <p class="text-muted mb-1">Nouveau dossier</p>
+                                    <h2 class="h4 mb-0">Creer un dossier</h2>
+                                </div>
+                                <a href="/my/evm/cases" class="btn btn-outline-secondary">Retour a mes dossiers</a>
+                            </div>
+
+                            <div t-if="page_error" class="alert alert-danger" role="alert">
+                                <p class="mb-2" t-esc="page_error"/>
+                                <p t-if="errors.get('form')" class="mb-0" t-esc="errors.get('form')"/>
+                            </div>
+
+                            <form action="/my/evm/cases/create" method="post" class="row g-3">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                                <div class="col-12">
+                                    <label for="patient_name" class="form-label">Nom du patient</label>
+                                    <input
+                                        id="patient_name"
+                                        type="text"
+                                        name="patient_name"
+                                        t-attf-class="form-control #{'is-invalid' if errors.get('patient_name') else ''}"
+                                        t-att-value="form_values.get('patient_name', '')"
+                                        required="required"
+                                        autocomplete="name"
+                                    />
+                                    <div t-if="errors.get('patient_name')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('patient_name')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="patient_email" class="form-label">Adresse e-mail du patient</label>
+                                    <input
+                                        id="patient_email"
+                                        type="email"
+                                        name="patient_email"
+                                        t-attf-class="form-control #{'is-invalid' if errors.get('patient_email') else ''}"
+                                        t-att-value="form_values.get('patient_email', '')"
+                                        required="required"
+                                        autocomplete="email"
+                                    />
+                                    <div t-if="errors.get('patient_email')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('patient_email')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="requested_session_count" class="form-label">
+                                        Nombre maximum de seances demandees
+                                    </label>
+                                    <input
+                                        id="requested_session_count"
+                                        type="number"
+                                        name="requested_session_count"
+                                        min="1"
+                                        step="1"
+                                        t-attf-class="form-control #{'is-invalid' if errors.get('requested_session_count') else ''}"
+                                        t-att-value="form_values.get('requested_session_count', '')"
+                                        required="required"
+                                        inputmode="numeric"
+                                    />
+                                    <div t-if="errors.get('requested_session_count')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('requested_session_count')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12 d-flex justify-content-end gap-2 pt-2">
+                                    <a href="/my/evm/cases" class="btn btn-outline-secondary">Annuler</a>
+                                    <button type="submit" class="btn btn-primary">Soumettre le dossier</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>

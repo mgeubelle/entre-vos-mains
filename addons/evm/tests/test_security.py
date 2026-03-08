@@ -1,4 +1,4 @@
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase, new_test_user
 
@@ -116,8 +116,18 @@ class TestEvmSecurity(TransactionCase):
             self.env["evm.payment_request"].with_user(fixture["patient_user"]).search([]),
             fixture["payment_request_1"],
         )
-        self.assertEqual(self.env["evm.case"].with_user(fixture["fondation_user"]).search_count([]), 2)
-        self.assertEqual(self.env["evm.payment_request"].with_user(fixture["fondation_user"]).search_count([]), 2)
+        self.assertEqual(
+            self.env["evm.case"].with_user(fixture["fondation_user"]).search_count(
+                [("id", "in", fixture["case_1"].ids + fixture["case_2"].ids)]
+            ),
+            2,
+        )
+        self.assertEqual(
+            self.env["evm.payment_request"].with_user(fixture["fondation_user"]).search_count(
+                [("id", "in", fixture["payment_request_1"].ids + fixture["payment_request_2"].ids)]
+            ),
+            2,
+        )
 
     def test_portal_users_cannot_bypass_acl_or_record_rules(self):
         fixture = self._create_security_fixture()
@@ -191,3 +201,35 @@ class TestEvmSecurity(TransactionCase):
         )
         fondation_case.with_user(fixture["fondation_user"]).write({"name": "Dossier fondation maj"})
         self.assertEqual(fondation_case.name, "Dossier fondation maj")
+
+    def test_kine_cannot_bypass_case_workflow_or_rewrite_submitted_case(self):
+        fixture = self._create_security_fixture()
+
+        own_case = self.env["evm.case"].with_user(fixture["kine_user"]).create(
+            {
+                "name": "Dossier brouillon kine",
+                "kine_user_id": fixture["kine_user"].id,
+                "patient_name": "Patient Brouillon",
+                "patient_email": "patient.brouillon@example.com",
+                "requested_session_count": 6,
+            }
+        )
+
+        with self.assertRaises(AccessError):
+            own_case.with_user(fixture["kine_user"]).write({"state": "pending"})
+        with self.assertRaises(AccessError):
+            self.env["evm.case"].with_user(fixture["kine_user"]).create(
+                {
+                    "name": "Dossier accepte",
+                    "kine_user_id": fixture["kine_user"].id,
+                    "state": "accepted",
+                }
+            )
+
+        own_case.with_user(fixture["kine_user"]).action_submit_to_pending()
+        self.assertEqual(own_case.state, "pending")
+
+        with self.assertRaises(AccessError):
+            own_case.with_user(fixture["kine_user"]).write({"patient_name": "Patient Modifie"})
+        with self.assertRaises(ValidationError):
+            own_case.with_user(fixture["kine_user"]).action_submit_to_pending()

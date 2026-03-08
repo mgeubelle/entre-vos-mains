@@ -1,3 +1,7 @@
+import html
+import re
+
+from odoo.http import Request
 from odoo.tests import tagged
 from odoo.tests.common import HttpCase, new_test_user
 
@@ -58,6 +62,7 @@ class TestEvmKinePortal(HttpCase):
 
         list_response = self.url_open("/my/evm/cases")
         self.assertEqual(list_response.status_code, 200)
+        self.assertIn("Nouveau dossier", list_response.text)
         self.assertIn(self.own_case.name, list_response.text)
         self.assertIn("En attente", list_response.text)
         self.assertIn("Patient Portail", list_response.text)
@@ -78,3 +83,81 @@ class TestEvmKinePortal(HttpCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertTrue(response.headers["Location"].endswith("/my/evm/cases"))
+
+    def test_kine_portal_creation_form_creates_a_pending_case(self):
+        self.authenticate(self.kine_login, self.kine_password)
+
+        form_response = self.url_open("/my/evm/cases/new")
+
+        self.assertEqual(form_response.status_code, 200)
+        self.assertIn("Creer un dossier", form_response.text)
+        self.assertIn("Nom du patient", form_response.text)
+        self.assertIn("Adresse e-mail du patient", form_response.text)
+        self.assertIn("Nombre maximum de seances demandees", form_response.text)
+
+        submit_response = self.url_open(
+            "/my/evm/cases/create",
+            data={
+                "csrf_token": self._extract_csrf_token(form_response.text),
+                "patient_name": "Patient Nouveau",
+                "patient_email": "patient.nouveau@example.com",
+                "requested_session_count": "16",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(submit_response.status_code, 303)
+        self.assertRegex(submit_response.headers["Location"], r"/my/evm/cases/\d+$")
+
+        case = (
+            self.env["evm.case"]
+            .sudo()
+            .search(
+                [
+                    ("kine_user_id", "=", self.kine_user.id),
+                    ("patient_name", "=", "Patient Nouveau"),
+                ]
+            )
+        )
+        self.assertEqual(len(case), 1)
+        self.assertEqual(case.state, "pending")
+        self.assertEqual(case.name, "Patient Nouveau")
+        self.assertTrue(any("Demande initiale soumise" in body for body in case.message_ids.mapped("body")))
+        case.unlink()
+
+    def test_kine_portal_creation_form_shows_french_errors_and_preserves_data(self):
+        self.authenticate(self.kine_login, self.kine_password)
+
+        response = self.url_open(
+            "/my/evm/cases/create",
+            data={
+                "csrf_token": Request.csrf_token(self),
+                "patient_name": "Patient Incomplet",
+                "patient_email": "",
+                "requested_session_count": "0",
+            },
+        )
+        response_text = html.unescape(response.text)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Veuillez corriger les erreurs ci-dessous.", response_text)
+        self.assertIn("Veuillez renseigner l'adresse e-mail du patient.", response_text)
+        self.assertIn("Veuillez renseigner un nombre de seances strictement positif.", response_text)
+        self.assertIn('value="Patient Incomplet"', response_text)
+        self.assertFalse(
+            self.env["evm.case"]
+            .sudo()
+            .search(
+                [
+                    ("kine_user_id", "=", self.kine_user.id),
+                    ("patient_name", "=", "Patient Incomplet"),
+                ]
+            )
+        )
+
+    @staticmethod
+    def _extract_csrf_token(html):
+        csrf_token_match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+        if not csrf_token_match:
+            raise AssertionError("Le formulaire portail doit exposer un jeton CSRF.")
+        return csrf_token_match.group(1)

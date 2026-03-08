@@ -1,6 +1,6 @@
 # Story 1.5: Permettre au kinesitherapeute de creer un dossier de prise-en-charge
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -27,10 +27,10 @@ so that je puisse initier une demande d'aide sans friction administrative.
 
 ## Tasks / Subtasks
 
-- [ ] Completer `evm.case` avec les champs de creation et les validations minimales
-- [ ] Construire le formulaire de creation cote kine avec feedback clair en francais
-- [ ] Implementer l'action metier de soumission vers `pending`
-- [ ] Tracer la soumission dans l'historique d'activite et tester les cas invalides
+- [x] Completer `evm.case` avec les champs de creation et les validations minimales
+- [x] Construire le formulaire de creation cote kine avec feedback clair en francais
+- [x] Implementer l'action metier de soumission vers `pending`
+- [x] Tracer la soumission dans l'historique d'activite et tester les cas invalides
 
 ## Dev Notes
 
@@ -55,6 +55,44 @@ so that je puisse initier une demande d'aide sans friction administrative.
 
 GPT-5 Codex
 
+### Implementation Plan
+
+- Ajouter `patient_name` et `patient_email` sur `evm.case`, centraliser la validation de soumission et normaliser la creation des brouillons.
+- Exposer un formulaire portail kine dedie avec erreurs proches des champs, resume global et redirection vers le detail du dossier soumis.
+- Etendre les tests modele/portail pour couvrir creation valide, blocage des cas invalides et robustesse des assertions de securite liees au fixture.
+
 ### Completion Notes List
 
-- Story prete pour execution par `dev-story`
+- Champs de creation `patient_name` et `patient_email` ajoutes sur `evm.case`, avec validation metier centralisee pour la soumission et nom de dossier aligne sur le patient.
+- Parcours portail kine ajoute: CTA "Nouveau dossier", ecran `/my/evm/cases/new`, POST `/my/evm/cases/create`, erreurs FR conservees dans le formulaire.
+- Transition `action_submit_to_pending` implementeee avec journalisation chatter de la demande initiale.
+- Tests Odoo completes ajoutes ou mis a jour pour le modele, le portail et une assertion de securite rendue independante des donnees globales.
+- Correction de revue appliquee: le workflow de soumission est maintenant enforce cote modele pour empecher tout passage direct a `pending` ou `accepted` par ecriture ORM, et les dossiers soumis deviennent non modifiables par le kinesitherapeute.
+
+## File List
+
+- addons/evm/controllers/portal.py
+- addons/evm/models/evm_case.py
+- addons/evm/tests/test_case_consultation.py
+- addons/evm/tests/test_kine_portal.py
+- addons/evm/tests/test_security.py
+- addons/evm/views/evm_case_views.xml
+- addons/evm/views/portal_templates.xml
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-08: ajout du parcours de creation de dossier cote kine, de la soumission vers `pending`, des validations FR et des tests associes.
+- 2026-03-08: corrections de revue appliquees sur l'integrite du workflow `draft -> pending`, les gardes serveur contre les bypass ORM et les tests de regression; story passee au statut `done`.
+
+## Senior Developer Review (AI)
+
+### Outcome
+
+done
+
+### Notes
+
+- Le workflow de soumission n'est plus contournable par `write({'state': ...})`: les kines sont limites aux brouillons, la transition reste centralisee dans `action_submit_to_pending` et la methode refuse desormais les dossiers non `draft`.
+- Les dossiers deja soumis sont figes pour le kinesitherapeute, ce qui preserve les invariants de la story 1.5 et evite de casser la future story 1.6 avec des retours arbitraires vers `pending`.
+- Regression couverte par tests sur les bypasss identifies pendant la revue, et validation complete repassee avec succes via `make quality-lint` et `make quality-smoke`.
