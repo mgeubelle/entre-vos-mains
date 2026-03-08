@@ -3,11 +3,12 @@
 ```text
 Epic 1: Ouvrir le dossier
   1.1 Initialiser le module EVM et l’environnement local Docker
-  1.2 Définir les rôles et le socle de sécurité métier
-  1.3 Permettre au kinésithérapeute d’accéder à son espace et consulter ses dossiers
-  1.4 Permettre au kinésithérapeute de créer un dossier de prise en charge
-  1.5 Permettre à la fondation de revoir et décider un dossier
-  1.6 Ouvrir l’accès patient après acceptation du dossier
+  1.2 Mettre en place le pipeline qualité minimal
+  1.3 Définir les rôles et le socle de sécurité métier
+  1.4 Permettre au kinésithérapeute d’accéder à son espace et consulter ses dossiers
+  1.5 Permettre au kinésithérapeute de créer un dossier de prise en charge
+  1.6 Permettre à la fondation de revoir et décider un dossier
+  1.7 Ouvrir l’accès patient après acceptation du dossier
 
 Epic 2: Parcours patient
   2.1 Permettre au patient de consulter son dossier accepté dans le portail

@@ -69,7 +69,8 @@ Add-ons Odoo 19 Community (Python) dans ce dépôt, avec UI via Website/Portal O
 
 ### Technical Preferences (Project Context)
 
-- Codebase Odoo (serveur) disponible localement dans `~/dev/odoo`.
+- Codebase Odoo (serveur) disponible localement dans `~/dev/odoo` pour consultation du code source et exemples idiomatiques Odoo.
+- Ce checkout local n'est pas une cible de deploiement du projet; le runtime local reste porte par le stack partage Docker.
 - Architecture idiomatique Odoo 19, best practices, principe KISS.
 
 ### Starter Options Considered
@@ -95,6 +96,8 @@ Add-ons Odoo 19 Community (Python) dans ce dépôt, avec UI via Website/Portal O
 mkdir -p addons
 /home/mgeubelle/dev/odoo/odoo-bin scaffold <nom_du_module> ./addons
 ```
+
+Ce checkout Odoo local est utilise ici comme source d'outillage et de reference pour initialiser ou comparer du code Odoo standard, pas comme environnement d'execution du projet.
 
 **Architectural Decisions Provided by Starter:**
 - Squelette standard module Odoo (manifest, modèles, vues, sécurité de base, etc.).

@@ -28,18 +28,18 @@ FR6: Interface très simple et accessible pour tous les âges, y compris les per
 FR7: Sécurité et conformité avec protection des données, contrôle d’accès, traçabilité des actions, respect du GDPR et du contexte belge.
 FR8: Portail patient avec accès sécurisé au dossier après acceptation, consultation du dossier, dépôt de factures/justificatifs et création de demandes de paiement.
 FR9: Traitement par la fondation des dossiers et demandes avec validation, demandes d’informations complémentaires, commentaires et suivi opérationnel.
-FR10: Communication asynchrone via notes, commentaires, chatter et notifications sur les événements clés du dossier et des demandes.
+FR10: Communication asynchrone via notes, commentaires, historique d'activite et notifications sur les événements clés du dossier et des demandes.
 
 ### NonFunctional Requirements
 
-NFR1: Les actions usuelles doivent avoir des temps de réponse rapides afin de ne pas ralentir les workflows métier.
-NFR2: La plateforme doit garantir une haute disponibilité pendant les heures ouvrées, avec un minimum d’interruptions.
+NFR1: Les écrans liste, détail et actions métier usuelles doivent charger ou confirmer en moins de 2 secondes pour 95 % des actions en heures ouvrées, hors temps de transfert des fichiers.
+NFR2: La plateforme doit viser une disponibilité d’au moins 99,5 % pendant les heures ouvrées, hors fenêtres de maintenance planifiées.
 NFR3: Les données sensibles et les documents doivent être protégés par un contrôle d’accès strict, une journalisation appropriée et des échanges sécurisés.
 NFR4: L’application doit respecter les exigences de confidentialité belges et GDPR, avec une minimisation des données sensibles stockées.
-NFR5: L’interface doit être utilisable par des personnes âgées et des personnes avec déficiences motrices, avec une approche de type faible friction et des parcours courts.
+NFR5: L’interface doit être utilisable par des personnes âgées et des personnes avec déficiences motrices, respecter WCAG 2.2 AA sur les parcours MVP critiques, et conserver des parcours courts.
 NFR6: La solution doit fonctionner sur Chrome, Firefox, Safari et les principaux navigateurs modernes.
 NFR7: L’intégration avec Odoo Community 19 et le module Accounting doit être fiable, sécurisée et sans automatisation bancaire.
-NFR8: La plateforme doit supporter une croissance du nombre d’utilisateurs sans dégradation perceptible des performances.
+NFR8: La plateforme doit supporter au moins 50 utilisateurs simultanés et 10 000 dossiers ou demandes historisés sans dégradation perceptible sur les parcours MVP.
 NFR9: L’architecture doit rester simple, idiomatique Odoo 19, maintenable et alignée avec le principe KISS.
 NFR10: L’interface visible utilisateur doit être en français, tandis que le code et les identifiants techniques restent en anglais.
 
@@ -58,14 +58,14 @@ NFR10: L’interface visible utilisateur doit être en français, tandis que le 
 - Les kinésithérapeutes et les patients utilisent des comptes portail Odoo; seuls les membres de la fondation et les administrateurs utilisent des comptes internes Odoo.
 - L’autorisation doit reposer sur des groupes Odoo, ACL et record rules strictes pour `evm.case`, `evm.payment_request` et les pièces jointes.
 - Les règles d'upload V1 sont: types autorisés `pdf`, `jpg`, `jpeg`, `png`; taille maximale 10 Mo par fichier; multi-fichiers autorisé; pas d'écrasement en place, chaque nouveau fichier ajoute une nouvelle pièce jointe pour préserver l'historique.
-- Les transitions métier doivent passer par des méthodes `action_*` et publier des traces dans le chatter sur les changements importants.
+- Les transitions métier doivent passer par des méthodes `action_*` et publier des traces dans l'historique d'activite sur les changements importants.
 - Les notifications V1 doivent couvrir au minimum les événements dossier accepté/refusé, demande soumise, demande à compléter, demande validée et demande payée.
 - Une auto-clôture des dossiers via cron est prévue après une durée définie par les règles métier.
 - Les vues, menus, aides et messages utilisateur doivent être en français; les valeurs techniques, noms de méthodes et champs restent en anglais.
 - Le site statique existant sera intégré dans une page `website` en fin de projet, hors cœur du MVP métier.
 - Les exigences de conformité incluent l’évitement du stockage structuré de données médicales; les factures servent de preuve principale et le code INAMI peut n’apparaître que dans les documents.
 - Les politiques automatisées de rétention, suppression et anonymisation sont explicitement hors scope V1.
-- Un point reste a clarifier avant implementation complete: cible d'accessibilite mesurable.
+- La cible d'accessibilite MVP est WCAG 2.2 AA sur les parcours critiques: creation de dossier cote kine, consultation du dossier et soumission de demande cote patient, revue dossier et revue demande cote fondation.
 
 ### FR Coverage Map
 
@@ -78,9 +78,22 @@ FR6: Epic 1 et Epic 2 - simplicite d'usage sur parcours de creation et portail p
 FR7: Epic 1 et Epic 4 - securite d'acces, conformite et auditabilite
 FR8: Epic 2 - portail patient et soumission de demandes
 FR9: Epic 3 - traitement operationnel par la fondation
-FR10: Epic 4 - commentaires, chatter et notifications
+FR10: Epic 4 - commentaires, historique d'activite et notifications
 
 ## Epic List
+
+## Implementation Prerequisites
+
+Les elements suivants sont des prerequis obligatoires a traiter avant le demarrage des stories fonctionnelles de l'Epic 1.
+
+- Enabling Item 1.1: Initialiser le module EVM et l'environnement local Docker
+- Enabling Item 1.2: Mettre en place le pipeline qualite minimal
+
+### Blocking Rule
+
+- Aucune story fonctionnelle de l'Epic 1, de l'Epic 2, de l'Epic 3 ou de l'Epic 4 ne doit commencer tant que les Enabling Items 1.1 et 1.2 ne sont pas termines.
+- Lors de la planification de sprint, ces enabling items doivent etre estimes, suivis et marques comme prerequis de demarrage.
+- Si l'un de ces enabling items n'est pas termine, les stories fonctionnelles dependantes doivent etre considerees comme bloquees.
 
 ### Epic 1: Soumettre et ouvrir un dossier de prise en charge
 Le kinesitherapeute peut creer un dossier, la fondation peut le revoir et l'accepter ou le refuser, et la plateforme met en place les acces et le cadre securise minimal pour demarrer le parcours.
@@ -102,13 +115,13 @@ Tous les acteurs beneficient de commentaires, notifications, journalisation des 
 
 Le kinesitherapeute peut creer un dossier, la fondation peut le revoir et l'accepter ou le refuser, et la plateforme met en place les acces et le cadre securise minimal pour demarrer le parcours.
 
+### Enabling Stories (prerequis obligatoires)
+
 ### Story 1.1: Initialiser le module EVM et l'environnement local Docker
 
-As a developpeur de la plateforme,
-I want un module `evm` scaffolde et un environnement Docker local executable,
-So that l'equipe puisse valider rapidement le socle technique et tester les premieres fonctionnalites en local.
+- Type: enabling story technique a terminer avant toute story fonctionnelle.
 
-**Acceptance Criteria:**
+- Objectif: fournir un socle technique executable pour permettre l'implementation des user stories de l'Epic 1.
 
 **Given** un poste de developpement avec Docker
 **When** je demarre l'environnement local
@@ -120,7 +133,23 @@ So that l'equipe puisse valider rapidement le socle technique et tester les prem
 **Then** sa structure suit les conventions Odoo retenues dans l'architecture
 **And** le chargement local permet de verifier que le socle est pret pour les stories suivantes
 
-### Story 1.2: Definir les roles et le socle de securite metier
+### Story 1.2: Mettre en place le pipeline qualite minimal
+
+- Type: enabling story technique a terminer avant toute story fonctionnelle.
+
+- Objectif: garantir un socle de qualite greenfield avant l'implementation fonctionnelle.
+
+**Given** le depot du projet
+**When** le pipeline qualite minimal est configure
+**Then** les commandes de verification retenues pour le projet peuvent s'executer automatiquement
+**And** leur usage est documente pour l'equipe
+
+**Given** une modification sur le module `evm`
+**When** l'equipe lance les controles locaux prevus
+**Then** elle peut verifier au minimum le linting ou les tests de base retenus
+**And** un echec de controle est visible avant fusion
+
+### Story 1.3: Definir les roles et le socle de securite metier
 
 As a administrateur de la plateforme,
 I want les groupes metier et le socle de securite du module configures,
@@ -135,10 +164,10 @@ So that chaque acteur puisse etre rattache a un role clair avant l'ajout progres
 
 **Given** un utilisateur affecte a un role
 **When** la configuration de securite du module est verifiee
-**Then** les groupes et regles de base sont prets a etre appliques aux objets metier des stories suivantes
-**And** aucune ambiguite n'existe sur les responsabilites de chaque role
+**Then** les permissions minimales de lecture, creation, modification et suppression sont definies pour chaque role sur les futurs objets `evm.case` et `evm.payment_request`
+**And** il est explicite que `kine` et `patient` n'ont pas d'acces transverse aux dossiers ou demandes d'autres personnes
 
-### Story 1.3: Permettre au kinesitherapeute d'acceder a son espace et consulter ses dossiers
+### Story 1.4: Permettre au kinesitherapeute d'acceder a son espace et consulter ses dossiers
 
 As a kinesitherapeute,
 I want acceder a mon espace et retrouver les dossiers que j'ai introduits,
@@ -148,15 +177,15 @@ So that je puisse soumettre de nouvelles demandes et suivre les prises en charge
 
 **Given** un kinesitherapeute avec un compte autorise
 **When** il se connecte a l'application
-**Then** il accede a un espace qui correspond a son role
-**And** il peut consulter la liste des dossiers qu'il a crees
+**Then** il accede a une vue listant uniquement les dossiers qu'il a crees
+**And** chaque ligne affiche au minimum le statut du dossier, la date de creation et l'identite du patient ou son libelle metier autorise
 
 **Given** un kinesitherapeute connecte
 **When** il ouvre un dossier qu'il a introduit
-**Then** il peut consulter son statut et les informations utiles au suivi
+**Then** il peut consulter le statut du dossier, le nombre de seances demandees, le nombre de seances autorisees si renseigne, et l'historique d'activite autorise
 **And** il ne peut pas acceder aux dossiers introduits par un autre kinesitherapeute
 
-### Story 1.4: Permettre au kinesitherapeute de creer un dossier de prise en charge
+### Story 1.5: Permettre au kinesitherapeute de creer un dossier de prise en charge
 
 As a kinesitherapeute,
 I want creer un dossier de prise en charge pour un patient,
@@ -179,7 +208,7 @@ So that je puisse initier une demande d'aide sans friction administrative.
 **Then** le systeme bloque la soumission
 **And** affiche des messages d'erreur clairs en francais
 
-### Story 1.5: Permettre a la fondation de revoir et decider un dossier
+### Story 1.6: Permettre a la fondation de revoir et decider un dossier
 
 As a membre de la fondation,
 I want examiner un dossier soumis et l'accepter ou le refuser,
@@ -210,9 +239,9 @@ So that les demandes legitimes puissent entrer dans le parcours de remboursement
 **Given** une decision d'acceptation ou de refus
 **When** l'action est confirmee
 **Then** le statut du dossier est mis a jour correctement
-**And** une trace est enregistree dans le chatter
+**And** une trace est enregistree dans l'historique d'activite
 
-### Story 1.6: Ouvrir l'acces patient apres acceptation du dossier
+### Story 1.7: Ouvrir l'acces patient apres acceptation du dossier
 
 As a patient,
 I want recevoir un acces securise a mon dossier une fois accepte,
@@ -359,7 +388,7 @@ So that je puisse traiter les dossiers en attente de maniere efficace.
 
 **Given** des demandes de paiement soumises existent
 **When** un membre de la fondation ouvre la vue de traitement
-**Then** il voit la liste des demandes pertinentes avec leurs informations utiles
+**Then** il voit la liste des demandes pertinentes avec au minimum le dossier lie, le patient, la date de soumission, le statut, le montant demande s'il existe, et le nombre de seances declarees
 **And** il peut acceder au detail d'une demande autorisee
 
 **Given** un utilisateur non autorise
@@ -482,7 +511,7 @@ So that le dossier reflete correctement l'etat reel du remboursement.
 
 ## Epic 4: Assurer la tracabilite et la fluidite operationnelle
 
-Tous les acteurs beneficient de commentaires, notifications, journalisation des actions et cloture operationnelle des dossiers pour securiser l'exploitation au quotidien.
+Tous les acteurs beneficient de commentaires, notifications, journalisation des actions via un historique d'activite et cloture operationnelle des dossiers pour securiser l'exploitation au quotidien.
 
 ### Story 4.1: Permettre les commentaires et echanges asynchrones sur les dossiers et demandes
 
@@ -517,7 +546,7 @@ So that je puisse auditer les decisions et suivre l'historique d'un dossier sans
 
 **Given** une transition importante de dossier ou de demande
 **When** l'action metier est executee
-**Then** un message systeme est enregistre dans le chatter
+**Then** un message systeme est enregistre dans l'historique d'activite
 **And** les champs suivis pertinents conservent leur historique
 
 **Given** une consultation ulterieure du dossier ou de la demande
@@ -535,13 +564,18 @@ So that je puisse agir rapidement sans surveiller en permanence la plateforme.
 
 **Given** un evenement metier notifiable survient
 **When** le workflow correspondant se termine
-**Then** une notification appropriee est emise au bon destinataire
-**And** seuls les evenements minimums definis pour la V1 sont couverts
+**Then** une notification email ou interne est emise au bon destinataire selon la configuration V1
+**And** son contenu indique au minimum l'objet concerne, le nouveau statut ou l'action attendue, et le lien vers le dossier ou la demande si disponible
 
 **Given** un utilisateur qui consulte l'objet apres notification
 **When** il ouvre le dossier ou la demande
 **Then** l'etat visible est coherent avec la notification envoyee
 **And** aucune notification n'est emise a un destinataire non autorise
+
+**Given** les evenements minimums definis pour la V1 surviennent
+**When** les workflows correspondants se terminent
+**Then** les notifications couvrent au minimum dossier accepte, dossier refuse, demande soumise, demande a completer, demande validee et demande payee
+**And** aucun autre evenement n'est requis pour declarer la V1 complete
 
 ### Story 4.4: Cloturer operationnellement un dossier selon les regles metier
 
