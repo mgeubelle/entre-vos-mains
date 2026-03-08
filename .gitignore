@@ -5,3 +5,4 @@ _bmad/
 # Python cache artifacts
 __pycache__/
 *.py[cod]
+.ruff_cache/

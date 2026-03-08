@@ -1,6 +1,6 @@
 # Story 1.2: Mettre en place le pipeline qualite minimal
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -22,10 +22,10 @@ so that je puisse verifier rapidement la sante du module avant toute implementat
 
 ## Tasks / Subtasks
 
-- [ ] Definir le jeu minimal de controles pour le depot: lint Python cible sur `addons/evm` et smoke test d'installation ou d'upgrade du module `evm` (AC: 1, 2)
-- [ ] Ajouter au repo les fichiers/outils strictement necessaires pour executer ces controles de facon reproductible, sans introduire une stack QA lourde (AC: 1, 2)
-- [ ] Exposer une commande unique ou une sequence tres courte documentee dans `README.md` pour lancer le pipeline local (AC: 1)
-- [ ] Verifier qu'un controle en echec remonte bien un code de sortie non nul et est observable avant fusion (AC: 2)
+- [x] Definir le jeu minimal de controles pour le depot: lint Python cible sur `addons/evm` et smoke test d'installation ou d'upgrade du module `evm` (AC: 1, 2)
+- [x] Ajouter au repo les fichiers/outils strictement necessaires pour executer ces controles de facon reproductible, sans introduire une stack QA lourde (AC: 1, 2)
+- [x] Exposer une commande unique ou une sequence tres courte documentee dans `README.md` pour lancer le pipeline local (AC: 1)
+- [x] Verifier qu'un controle en echec remonte bien un code de sortie non nul et est observable avant fusion (AC: 2)
 
 ## Dev Notes
 
@@ -87,7 +87,66 @@ so that je puisse verifier rapidement la sante du module avant toute implementat
 
 GPT-5 Codex
 
+### Debug Log References
+
+- `make quality-lint`
+- `make quality-smoke`
+- `make quality`
+- `tmp="$(mktemp --suffix .py)"; printf 'import os\n' > "$tmp"; QUALITY_LINT_TARGET="$tmp" make quality-lint; rm -f "$tmp"` pour verifier un echec de lint observable
+
+### Implementation Plan
+
+- Ajouter une configuration repo-locale `ruff` minimale via `pyproject.toml`, sans stack QA supplementaire.
+- Centraliser le pipeline dans `scripts/quality-check.sh` puis exposer `make quality`, `make quality-lint` et `make quality-smoke`.
+- Reutiliser exclusivement le stack partage `odoo-scripts/local-setup-docker` pour le smoke test Odoo, avec installation sur base absente et upgrade sur base existante.
+
 ### Completion Notes List
 
-- Story prete pour execution par `dev-story`
-- 2026-03-08: story revalidee apres clarification de contexte sur le checkout Odoo local et le runtime Docker partage.
+- Pipeline qualite minimal ajoute avec `make quality` comme point d'entree unique et `scripts/quality-check.sh` pour orchestrer lint + smoke test.
+- `pyproject.toml` epingle `ruff` sur `addons/evm`, aligne la cible Python sur le runtime local et limite l'exception `F401` aux `__init__.py` idiomatiques Odoo.
+- `README.md` documente la commande unique, les cibles detaillees, le prerequis `uv` et un exemple reproductible d'echec de lint.
+- Validations executees avec succes: `make quality-lint`, `make quality-smoke`, `make quality`.
+- Echec observe avant fusion avec un fichier contenant `import os` inutilise: `make quality-lint` echoue bien avant fusion.
+
+### File List
+
+- `.gitignore`
+- `Makefile`
+- `README.md`
+- `pyproject.toml`
+- `scripts/quality-check.sh`
+- `_bmad-output/implementation-artifacts/1-2-mettre-en-place-le-pipeline-qualite-minimal.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+
+- 2026-03-08: ajout d'un pipeline qualite local minimal base sur `ruff` pour `addons/evm`, un smoke test Odoo sur le stack partage et une commande unique `make quality`.
+- 2026-03-08: revue AI corrigee pour documenter le prerequis `uv`, l'exemple d'echec de lint reproductible et l'alignement Python de Ruff.
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Martin
+
+### Date
+
+2026-03-08
+
+### Outcome
+
+Approve
+
+### Findings
+
+- Corrige la preuve d'echec de lint: un `mktemp` vide ne suffisait pas, l'exemple documente cree maintenant explicitement un import inutilise.
+- Corrige la documentation des prerequis en ajoutant `uv`, requis pour `uvx`.
+- Aligne `target-version` de Ruff sur le runtime local Python 3.12 du stack partage.
+- Complete la tracabilite de la story avec les fichiers modifies pendant la revue.
+
+### Validation Notes
+
+- `make quality-lint` passe.
+- `make quality-smoke` passe.
+- `make quality` passe.
+- Le scenario d'echec documente pour `quality-lint` est reproductible et remonte bien un code non nul.

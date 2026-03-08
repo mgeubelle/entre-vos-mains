@@ -5,6 +5,7 @@ Bootstrap local du module Odoo 19 `evm` sur le stack Docker partage.
 ## Prerequis
 
 - Docker et `docker compose`
+- `uv` disponible en local pour executer `uvx`
 - Checkout Odoo local disponible dans `/home/mgeubelle/dev/odoo` pour consulter le code source Odoo et ses exemples si necessaire
 - Stack local disponible dans `/home/mgeubelle/dev/odoo-scripts/local-setup-docker`
 - Services existants: `db`, `odoo-19`, `nginx`
@@ -58,6 +59,40 @@ docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-com
 curl -I http://127.0.0.1/web/login
 ```
 
+## Pipeline qualite minimal
+
+Commande unique:
+
+```bash
+make quality
+```
+
+Cette commande enchaine:
+
+- `uvx --from 'ruff==0.11.0' ruff check addons/evm`
+- un smoke test Odoo via le stack partage pour installer `evm` si `evm_dev` n'existe pas encore, sinon upgrader `evm` sur cette base
+
+Commandes ciblees:
+
+```bash
+make quality-lint
+make quality-smoke
+```
+
+Notes d'usage:
+
+- `uvx` telecharge `ruff` a la premiere execution puis reutilise le cache local
+- le smoke test reutilise `/home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-compose.yml`
+- tout echec de lint ou de smoke test fait echouer la commande avec un code de sortie non nul
+- pour verifier un echec de lint, utiliser un fichier contenant volontairement un probleme simple, par exemple:
+
+```bash
+tmp="$(mktemp --suffix .py)"
+printf 'import os\n' > "$tmp"
+QUALITY_LINT_TARGET="$tmp" make quality-lint
+rm -f "$tmp"
+```
+
 ## Reset local
 
 Supprimer seulement la base applicative de dev:
@@ -81,4 +116,4 @@ docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-com
 - Le stack partage monte ce depot dans `odoo-19` via `/mnt/extra-addons/entre-vos-mains`.
 - Le checkout local Odoo situe dans `/home/mgeubelle/dev/odoo` sert uniquement de reference source et d'exemples Odoo; il n'est pas utilise comme runtime ni comme cible d'implementation pour ce projet.
 - L'`addons_path` du stack partage inclut `/mnt/extra-addons/entre-vos-mains`, ce qui rend `evm` installable sans runtime Odoo local dans ce repo.
-- Le pipeline qualite complet n'est pas installe dans cette story; seul le bootstrap local et le smoke test sont couverts ici.
+- Le pipeline qualite du depot reste volontairement minimal: lint `ruff` cible sur `addons/evm` et smoke test Odoo sur le stack partage.
