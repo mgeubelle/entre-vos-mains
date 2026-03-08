@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="module_category_evm" model="ir.module.category">
+        <field name="name">Entre Vos Mains</field>
+        <field name="description">Groupes metier du module Entre Vos Mains.</field>
+        <field name="sequence">35</field>
+    </record>
+
+    <record id="res_groups_privilege_evm" model="res.groups.privilege">
+        <field name="name">Entre Vos Mains</field>
+        <field name="sequence">35</field>
+        <field name="category_id" ref="evm.module_category_evm"/>
+    </record>
+
+    <record id="group_evm_kine" model="res.groups">
+        <field name="name">EVM / Kinesitherapeute</field>
+        <field name="sequence">10</field>
+        <field name="privilege_id" ref="evm.res_groups_privilege_evm"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_portal'))]"/>
+        <field name="comment">Role portail pour les kinesitherapeutes.</field>
+    </record>
+
+    <record id="group_evm_patient" model="res.groups">
+        <field name="name">EVM / Patient</field>
+        <field name="sequence">20</field>
+        <field name="privilege_id" ref="evm.res_groups_privilege_evm"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_portal'))]"/>
+        <field name="comment">Role portail pour les patients.</field>
+    </record>
+
+    <record id="group_evm_fondation" model="res.groups">
+        <field name="name">EVM / Fondation</field>
+        <field name="sequence">30</field>
+        <field name="privilege_id" ref="evm.res_groups_privilege_evm"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        <field name="comment">Role interne pour le traitement des dossiers et demandes.</field>
+    </record>
+
+    <record id="group_evm_admin" model="res.groups">
+        <field name="name">EVM / Administrateur</field>
+        <field name="sequence">40</field>
+        <field name="privilege_id" ref="evm.res_groups_privilege_evm"/>
+        <field name="implied_ids" eval="[(4, ref('evm.group_evm_fondation')), (4, ref('base.group_system'))]"/>
+        <field name="comment">Role interne d'administration du module.</field>
+    </record>
+</odoo>

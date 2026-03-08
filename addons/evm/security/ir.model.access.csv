@@ -1,0 +1,9 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_evm_case_kine,access.evm.case.kine,model_evm_case,evm.group_evm_kine,1,1,1,0
+access_evm_case_patient,access.evm.case.patient,model_evm_case,evm.group_evm_patient,1,0,0,0
+access_evm_case_fondation,access.evm.case.fondation,model_evm_case,evm.group_evm_fondation,1,1,1,1
+access_evm_case_admin,access.evm.case.admin,model_evm_case,evm.group_evm_admin,1,1,1,1
+access_evm_payment_request_kine,access.evm.payment.request.kine,model_evm_payment_request,evm.group_evm_kine,1,0,0,0
+access_evm_payment_request_patient,access.evm.payment.request.patient,model_evm_payment_request,evm.group_evm_patient,1,1,1,1
+access_evm_payment_request_fondation,access.evm.payment.request.fondation,model_evm_payment_request,evm.group_evm_fondation,1,1,1,1
+access_evm_payment_request_admin,access.evm.payment.request.admin,model_evm_payment_request,evm.group_evm_admin,1,1,1,1
