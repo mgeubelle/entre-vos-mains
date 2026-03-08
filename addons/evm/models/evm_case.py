@@ -1,6 +1,6 @@
-from odoo import _, api, fields, models
+from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
-from odoo.tools import single_email_re
+from odoo.tools import email_normalize, single_email_re
 
 
 class EvmCase(models.Model):
@@ -33,6 +33,12 @@ class EvmCase(models.Model):
         "res.users",
         index=True,
         string="Patient",
+    )
+    patient_partner_id = fields.Many2one(
+        "res.partner",
+        index=True,
+        string="Contact patient",
+        copy=False,
     )
     requested_session_count = fields.Integer(
         string="Seances demandees",
@@ -89,7 +95,8 @@ class EvmCase(models.Model):
         tracking=True,
     )
 
-    _kine_protected_write_fields = {"state", "authorized_session_count", "kine_user_id", "patient_user_id"}
+    _workflow_only_write_fields = {"state", "patient_user_id", "patient_partner_id"}
+    _kine_protected_write_fields = {"authorized_session_count", "kine_user_id", "patient_user_id", "patient_partner_id"}
     _kine_draft_only_fields = {"name", "patient_name", "patient_email", "requested_session_count"}
     _submitted_locked_write_fields = {"name", "kine_user_id", "patient_name", "patient_email", "requested_session_count"}
     _decision_locked_write_fields = {
@@ -175,6 +182,143 @@ class EvmCase(models.Model):
             message += " " + _("Note: %(note)s", note=self.foundation_decision_note)
         return message
 
+    def _build_patient_portal_message(self):
+        self.ensure_one()
+        email = self.patient_partner_id.email or self.patient_email
+        return _(
+            "Acces portail patient active pour %(email)s. Invitation de connexion preparee via le portail Odoo standard.",
+            email=email,
+        )
+
+    def _get_patient_portal_welcome_message(self):
+        self.ensure_one()
+        return _(
+            "Votre dossier Entre Vos Mains a ete accepte. Utilisez ce lien securise pour activer ou retrouver votre acces portail."
+        )
+
+    def _get_patient_normalized_email(self):
+        self.ensure_one()
+        return email_normalize(self.patient_email)
+
+    def _get_patient_identity_values(self):
+        self.ensure_one()
+        partner_values = {"name": self.patient_name}
+        normalized_email = self._get_patient_normalized_email()
+        if normalized_email:
+            partner_values["email"] = normalized_email
+        return partner_values
+
+    def _ensure_reusable_patient_user(self, user):
+        self.ensure_one()
+        if not user:
+            return
+        user = user.with_context(active_test=False).sudo()
+        if user._is_internal():
+            raise ValidationError(
+                _("L'adresse e-mail du patient est deja rattachee a un utilisateur interne et ne peut pas etre reutilisee.")
+            )
+        if user.has_group("evm.group_evm_kine"):
+            raise ValidationError(
+                _("L'adresse e-mail du patient est deja rattachee a un compte kinesitherapeute et ne peut pas etre reutilisee.")
+            )
+
+    def _ensure_partner_matches_patient_identity(self, partner, normalized_email):
+        self.ensure_one()
+        linked_users = partner.with_context(active_test=False).sudo().user_ids
+        if len(linked_users) > 1:
+            raise ValidationError(
+                _("Le contact patient est rattache a plusieurs utilisateurs et ne peut pas etre active automatiquement.")
+            )
+        if not linked_users:
+            return
+        linked_user = linked_users[:1]
+        self._ensure_reusable_patient_user(linked_user)
+        if normalized_email and email_normalize(linked_user.login) != normalized_email:
+            raise ValidationError(
+                _(
+                    "Le contact patient existant est rattache a un compte dont l'identifiant ne correspond pas a l'adresse e-mail du dossier."
+                )
+            )
+
+    def _resolve_patient_portal_user(self, partner):
+        self.ensure_one()
+        normalized_email = self._get_patient_normalized_email()
+        linked_users = partner.with_context(active_test=False).sudo().user_ids
+        if normalized_email:
+            linked_users = linked_users.filtered(lambda user: email_normalize(user.login) == normalized_email)
+        if len(linked_users) > 1:
+            raise ValidationError(
+                _("Impossible d'identifier de maniere fiable le compte portail du patient pour ce dossier.")
+            )
+        if not linked_users:
+            raise ValidationError(_("Aucun compte portail patient n'a ete cree ou retrouve pour ce dossier."))
+        patient_user = linked_users[:1]
+        self._ensure_reusable_patient_user(patient_user)
+        return patient_user
+
+    def _find_existing_patient_user(self):
+        self.ensure_one()
+        normalized_email = self._get_patient_normalized_email()
+        if not normalized_email:
+            return self.env["res.users"]
+        return self.env["res.users"].with_context(active_test=False).sudo().search([("login", "=", normalized_email)], limit=1)
+
+    def _ensure_patient_partner(self):
+        self.ensure_one()
+        partner_values = self._get_patient_identity_values()
+        normalized_email = self._get_patient_normalized_email()
+        partner = self.patient_partner_id.sudo()
+        existing_user = self._find_existing_patient_user()
+        if existing_user:
+            self._ensure_reusable_patient_user(existing_user)
+            partner = existing_user.partner_id
+        elif not partner and normalized_email:
+            partner = self.env["res.partner"].sudo().search([("email", "=", normalized_email)], limit=1)
+        if partner:
+            self._ensure_partner_matches_patient_identity(partner, normalized_email)
+        if not partner:
+            partner = self.env["res.partner"].sudo().create(partner_values)
+        else:
+            partner.sudo().write(partner_values)
+        self.with_context(evm_allow_case_workflow_write=True).write({"patient_partner_id": partner.id})
+        return partner
+
+    def _activate_patient_portal_access(self):
+        patient_group = self.env.ref("evm.group_evm_patient")
+        for record in self:
+            partner = record._ensure_patient_partner()
+            wizard = (
+                self.env["portal.wizard"]
+                .with_context(active_test=False)
+                .sudo()
+                .create(
+                    {
+                        "partner_ids": [Command.link(partner.id)],
+                        "welcome_message": record._get_patient_portal_welcome_message(),
+                    }
+                )
+            )
+            wizard_user = wizard.user_ids.filtered(lambda user: user.partner_id == partner)[:1]
+            if wizard_user.is_internal:
+                raise ValidationError(
+                    _("Le contact patient est deja rattache a un utilisateur interne et ne peut pas recevoir un acces portail.")
+                )
+            if wizard_user.is_portal:
+                wizard_user.action_invite_again()
+            else:
+                wizard_user.action_grant_access()
+
+            patient_user = record._resolve_patient_portal_user(partner)
+            patient_user.write({"group_ids": [Command.link(patient_group.id)]})
+            record.with_context(evm_allow_case_workflow_write=True).write(
+                {
+                    "patient_partner_id": partner.id,
+                    "patient_user_id": patient_user.id,
+                }
+            )
+            record.message_post(body=record._build_patient_portal_message())
+        return True
+
     @api.model
     def validate_submission_data(self, values):
         cleaned_values = {
@@ -224,8 +368,8 @@ class EvmCase(models.Model):
     def write(self, vals):
         allow_workflow_write = self.env.context.get("evm_allow_case_workflow_write")
         touched_fields = set(vals)
-        if "state" in vals and not allow_workflow_write:
-            raise AccessError(_("Le statut du dossier ne peut etre modifie que via une action metier."))
+        if touched_fields & self._workflow_only_write_fields and not allow_workflow_write:
+            raise AccessError(_("Le statut et les acces patient du dossier ne peuvent etre modifies que via une action metier."))
         if not allow_workflow_write:
             if touched_fields & self._submitted_locked_write_fields and any(record.state != "draft" for record in self):
                 raise AccessError(_("Les informations soumises du dossier ne peuvent plus etre modifiees apres l'envoi."))
@@ -272,30 +416,34 @@ class EvmCase(models.Model):
         annual_cap = self._get_annual_session_cap()
         annual_cap_used = self._get_annual_session_cap_usage_by_year({today.year}).get(today.year, 0)
 
-        for record in self:
-            if record.authorized_session_count <= 0:
-                raise ValidationError(_("Veuillez definir explicitement les seances autorisees avant l'acceptation."))
-            if annual_cap and annual_cap_used + record.authorized_session_count > annual_cap:
-                remaining = max(annual_cap - annual_cap_used, 0)
-                raise ValidationError(
-                    _(
-                        "L'acceptation depasse le plafond annuel configure. "
-                        "Il reste %(remaining)s seances disponibles sur %(cap)s.",
-                        remaining=remaining,
-                        cap=annual_cap,
+        with self.env.cr.savepoint():
+            for record in self:
+                if record.authorized_session_count <= 0:
+                    raise ValidationError(_("Veuillez definir explicitement les seances autorisees avant l'acceptation."))
+                if annual_cap and annual_cap_used + record.authorized_session_count > annual_cap:
+                    remaining = max(annual_cap - annual_cap_used, 0)
+                    raise ValidationError(
+                        _(
+                            "L'acceptation depasse le plafond annuel configure. "
+                            "Il reste %(remaining)s seances disponibles sur %(cap)s.",
+                            remaining=remaining,
+                            cap=annual_cap,
+                        )
                     )
-                )
 
-            remaining_after_accept = max(annual_cap - annual_cap_used - record.authorized_session_count, 0) if annual_cap else None
-            record.with_context(evm_allow_case_workflow_write=True).write(
-                {
-                    "state": "accepted",
-                    "foundation_decision_user_id": self.env.user.id,
-                    "foundation_decision_date": today,
-                }
-            )
-            record.message_post(body=record._build_decision_message("accepted", remaining_after_accept))
-            annual_cap_used += record.authorized_session_count
+                remaining_after_accept = (
+                    max(annual_cap - annual_cap_used - record.authorized_session_count, 0) if annual_cap else None
+                )
+                record._activate_patient_portal_access()
+                record.with_context(evm_allow_case_workflow_write=True).write(
+                    {
+                        "state": "accepted",
+                        "foundation_decision_user_id": self.env.user.id,
+                        "foundation_decision_date": today,
+                    }
+                )
+                record.message_post(body=record._build_decision_message("accepted", remaining_after_accept))
+                annual_cap_used += record.authorized_session_count
         return True
 
     def action_refuse(self):

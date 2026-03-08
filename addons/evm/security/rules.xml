@@ -15,7 +15,7 @@
         <field name="name">EVM case - patient owns record</field>
         <field name="model_id" ref="model_evm_case"/>
         <field name="groups" eval="[(4, ref('evm.group_evm_patient'))]"/>
-        <field name="domain_force">[('patient_user_id', '=', user.id)]</field>
+        <field name="domain_force">[('patient_user_id', '=', user.id), ('state', '=', 'accepted')]</field>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="False"/>
         <field name="perm_create" eval="False"/>
@@ -59,7 +59,7 @@
         <field name="name">EVM payment request - patient owns record</field>
         <field name="model_id" ref="model_evm_payment_request"/>
         <field name="groups" eval="[(4, ref('evm.group_evm_patient'))]"/>
-        <field name="domain_force">[('patient_user_id', '=', user.id)]</field>
+        <field name="domain_force">[('patient_user_id', '=', user.id), ('case_id.state', '=', 'accepted')]</field>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="True"/>
         <field name="perm_create" eval="True"/>

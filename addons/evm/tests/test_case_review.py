@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from odoo import fields
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import tagged
@@ -48,6 +50,88 @@ class TestEvmCaseReview(TransactionCase):
             any("Dossier accepte" in body for body in case.message_ids.mapped("body")),
             "L'acceptation doit etre tracee dans le chatter.",
         )
+
+    def test_accept_action_creates_patient_portal_access_and_prepares_invitation(self):
+        case = self._create_pending_case(requested=12, suffix="Invite")
+
+        with patch(
+            "odoo.addons.portal.wizard.portal_wizard.PortalWizardUser._send_email",
+            autospec=True,
+            return_value=True,
+        ) as mocked_send_email:
+            self._accept_case(case, authorized=10)
+
+        self.assertEqual(case.state, "accepted")
+        self.assertTrue(case.patient_partner_id)
+        self.assertTrue(case.patient_user_id)
+        self.assertEqual(case.patient_user_id.partner_id, case.patient_partner_id)
+        self.assertEqual(case.patient_partner_id.email, "patient.review.invite@example.com")
+        self.assertTrue(case.patient_user_id.active)
+        self.assertTrue(case.patient_user_id.has_group("evm.group_evm_patient"))
+        self.assertEqual(case.patient_partner_id.signup_type, "signup")
+        self.assertEqual(mocked_send_email.call_count, 1)
+        self.assertTrue(
+            any("Acces portail patient" in body for body in case.message_ids.mapped("body")),
+            "L'activation patient doit etre tracee dans le chatter.",
+        )
+
+    def test_accept_action_reactivates_existing_patient_portal_user(self):
+        archived_user = new_test_user(
+            self.env,
+            login="patient.review.archived@example.com",
+            groups="evm.group_evm_patient",
+            name="Patient Archive",
+        )
+        archived_user.partner_id.write({"email": "patient.review.archived@example.com"})
+        archived_user.write({"active": False})
+        case = self._create_pending_case(requested=12, suffix="Archived")
+
+        with patch(
+            "odoo.addons.portal.wizard.portal_wizard.PortalWizardUser._send_email",
+            autospec=True,
+            return_value=True,
+        ) as mocked_send_email:
+            self._accept_case(case, authorized=8)
+
+        self.assertEqual(case.patient_user_id, archived_user)
+        self.assertEqual(case.patient_partner_id, archived_user.partner_id)
+        self.assertTrue(archived_user.active)
+        self.assertTrue(archived_user.has_group("evm.group_evm_patient"))
+        self.assertEqual(mocked_send_email.call_count, 1)
+
+    def test_accept_action_rejects_patient_email_already_used_by_kine_account(self):
+        kine_conflict = new_test_user(
+            self.env,
+            login="patient.review.rolemix@example.com",
+            groups="evm.group_evm_kine",
+            name="Kine Conflict",
+        )
+        kine_conflict.partner_id.write({"email": "patient.review.rolemix@example.com"})
+        case = self._create_pending_case(requested=12, suffix="RoleMix")
+
+        with self.assertRaisesRegex(ValidationError, "compte kinesitherapeute"):
+            self._accept_case(case, authorized=7)
+
+        self.assertEqual(case.state, "pending")
+        self.assertFalse(case.patient_user_id)
+        self.assertFalse(case.patient_partner_id)
+
+    def test_accept_action_rejects_existing_partner_with_mismatched_login(self):
+        mismatched_user = new_test_user(
+            self.env,
+            login="existing.patient.account@example.com",
+            groups="evm.group_evm_patient",
+            name="Patient Mismatch",
+        )
+        mismatched_user.partner_id.write({"email": "patient.review.partnermismatch@example.com"})
+        case = self._create_pending_case(requested=12, suffix="PartnerMismatch")
+
+        with self.assertRaisesRegex(ValidationError, "identifiant ne correspond pas"):
+            self._accept_case(case, authorized=9)
+
+        self.assertEqual(case.state, "pending")
+        self.assertFalse(case.patient_user_id)
+        self.assertFalse(case.patient_partner_id)
 
     def test_accept_action_requires_explicit_authorized_session_count(self):
         case = self._create_pending_case(requested=12)

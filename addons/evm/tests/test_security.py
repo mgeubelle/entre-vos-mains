@@ -57,6 +57,11 @@ class TestEvmSecurity(TransactionCase):
 
         self.assertEqual(rule.domain_force, "[('kine_user_id', '=', user.id)]")
 
+    def test_patient_case_record_rule_requires_connected_user_and_accepted_state(self):
+        rule = self.env.ref("evm.evm_case_rule_patient_own")
+
+        self.assertEqual(rule.domain_force, "[('patient_user_id', '=', user.id), ('state', '=', 'accepted')]")
+
     def _create_security_fixture(self):
         kine_user = new_test_user(self.env, login="kine1", groups="evm.group_evm_kine")
         other_kine_user = new_test_user(self.env, login="kine2", groups="evm.group_evm_kine")
@@ -69,6 +74,7 @@ class TestEvmSecurity(TransactionCase):
                 "name": "Dossier A",
                 "kine_user_id": kine_user.id,
                 "patient_user_id": patient_user.id,
+                "state": "accepted",
             }
         )
         case_2 = self.env["evm.case"].create(
@@ -76,6 +82,15 @@ class TestEvmSecurity(TransactionCase):
                 "name": "Dossier B",
                 "kine_user_id": other_kine_user.id,
                 "patient_user_id": other_patient_user.id,
+                "state": "accepted",
+            }
+        )
+        case_pending_same_patient = self.env["evm.case"].create(
+            {
+                "name": "Dossier en attente patient A",
+                "kine_user_id": other_kine_user.id,
+                "patient_user_id": patient_user.id,
+                "state": "pending",
             }
         )
         payment_request_1 = self.env["evm.payment_request"].create(
@@ -90,6 +105,12 @@ class TestEvmSecurity(TransactionCase):
                 "case_id": case_2.id,
             }
         )
+        payment_request_pending = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande en attente",
+                "case_id": case_pending_same_patient.id,
+            }
+        )
 
         return {
             "kine_user": kine_user,
@@ -99,8 +120,10 @@ class TestEvmSecurity(TransactionCase):
             "fondation_user": fondation_user,
             "case_1": case_1,
             "case_2": case_2,
+            "case_pending_same_patient": case_pending_same_patient,
             "payment_request_1": payment_request_1,
             "payment_request_2": payment_request_2,
+            "payment_request_pending": payment_request_pending,
         }
 
     def test_portal_users_only_see_their_records(self):
@@ -136,8 +159,18 @@ class TestEvmSecurity(TransactionCase):
             self.env["evm.case"].with_user(fixture["kine_user"]).search([("id", "=", fixture["case_2"].id)])
         )
         self.assertFalse(
+            self.env["evm.case"].with_user(fixture["patient_user"]).search(
+                [("id", "=", fixture["case_pending_same_patient"].id)]
+            )
+        )
+        self.assertFalse(
             self.env["evm.payment_request"].with_user(fixture["patient_user"]).search(
                 [("id", "=", fixture["payment_request_2"].id)]
+            )
+        )
+        self.assertFalse(
+            self.env["evm.payment_request"].with_user(fixture["patient_user"]).search(
+                [("id", "=", fixture["payment_request_pending"].id)]
             )
         )
 
