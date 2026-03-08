@@ -1,0 +1,77 @@
+# generated: 2026-03-08
+# project: dev
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /home/mgeubelle/dev/entre-vos-mains-addons/entre-vos-mains/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-08
+project: dev
+project_key: NOKEY
+tracking_system: file-system
+story_location: /home/mgeubelle/dev/entre-vos-mains-addons/entre-vos-mains/_bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-initialiser-le-module-evm-et-l-environnement-local-docker: done
+  1-2-mettre-en-place-le-pipeline-qualite-minimal: ready-for-dev
+  1-3-definir-les-roles-et-le-socle-de-securite-metier: ready-for-dev
+  1-4-permettre-au-kinesitherapeute-d-acceder-a-son-espace-et-consulter-ses-dossiers: ready-for-dev
+  1-5-permettre-au-kinesitherapeute-de-creer-un-dossier-de-prise-en-charge: ready-for-dev
+  1-6-permettre-a-la-fondation-de-revoir-et-decider-un-dossier: ready-for-dev
+  1-7-ouvrir-l-acces-patient-apres-acceptation-du-dossier: ready-for-dev
+  epic-1-retrospective: optional
+
+  epic-2: in-progress
+  2-1-permettre-au-patient-de-consulter-son-dossier-accepte-dans-le-portail: ready-for-dev
+  2-2-permettre-au-patient-de-consulter-l-espace-documentaire-de-son-dossier: ready-for-dev
+  2-3-permettre-au-patient-de-creer-une-demande-de-paiement: ready-for-dev
+  2-4-permettre-au-patient-de-deposer-des-factures-et-justificatifs-sur-une-demande: ready-for-dev
+  2-5-permettre-au-patient-de-soumettre-une-demande-complete-a-la-fondation: ready-for-dev
+  epic-2-retrospective: optional
+
+  epic-3: in-progress
+  3-1-permettre-a-la-fondation-de-consulter-la-file-des-demandes-de-paiement-soumises: ready-for-dev
+  3-2-permettre-a-la-fondation-de-retourner-une-demande-a-completer: ready-for-dev
+  3-3-permettre-au-patient-de-suivre-et-completer-une-demande-retournee-par-la-fondation: ready-for-dev
+  3-4-permettre-a-la-fondation-de-refuser-une-demande-de-paiement: ready-for-dev
+  3-5-permettre-a-la-fondation-de-valider-une-demande-et-de-mettre-a-jour-le-suivi-des-seances: ready-for-dev
+  3-6-creer-et-lier-un-paiement-odoo-brouillon-a-une-demande-validee: ready-for-dev
+  3-7-permettre-a-la-fondation-de-confirmer-un-paiement-effectue-hors-plateforme: ready-for-dev
+  epic-3-retrospective: optional
+
+  epic-4: in-progress
+  4-1-permettre-les-commentaires-et-echanges-asynchrones-sur-les-dossiers-et-demandes: ready-for-dev
+  4-2-journaliser-automatiquement-les-transitions-metier-importantes: ready-for-dev
+  4-3-notifier-les-acteurs-sur-les-evenements-cles-du-workflow: ready-for-dev
+  4-4-cloturer-operationnellement-un-dossier-selon-les-regles-metier: ready-for-dev
+  4-5-executer-une-cloture-automatique-des-dossiers-via-tache-planifiee: ready-for-dev
+  epic-4-retrospective: optional

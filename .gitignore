@@ -1,3 +1,7 @@
 # BMAD internal workspace and generated artifacts
 .agents/
 _bmad/
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
