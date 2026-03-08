@@ -51,6 +51,22 @@ docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-com
   -d evm_dev --http-port=8070 --stop-after-init -u evm'
 ```
 
+Important pour les tests manuels:
+
+- apres chaque implementation de story, relancer au minimum cette commande d'upgrade avant de tester dans l'UI
+- si la story ajoute ou modifie des modeles Python, des champs ou des vues techniques, redemarrer aussi le service `odoo-19` pour s'assurer que le serveur web actif utilise la version fraiche du code
+- sans cette mise a jour, les tests manuels peuvent se faire sur une registry ou un processus web non rafraichi, avec des erreurs trompeuses du type `field is undefined`
+
+Commande recommandee apres une story:
+
+```bash
+docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-compose.yml restart odoo-19
+docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-compose.yml \
+  exec -T odoo-19 sh -lc \
+  'odoo -c /etc/odoo/odoo.conf --db_host=db --db_port=5432 -r odoo -w odoo \
+  -d evm_dev --http-port=8070 --stop-after-init -u evm'
+```
+
 Commandes utiles:
 
 ```bash

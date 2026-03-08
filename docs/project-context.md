@@ -18,3 +18,7 @@
 - **Best practices Odoo 19**: architecture et patterns idiomatiques Odoo (modèles, vues, contrôleurs, sécurité, assets, etc.).
 - **KISS**: préférer des solutions simples, lisibles et maintenables; éviter la sur-ingénierie.
 - **Pragmatique**: minimiser les dépendances et la complexité tant que le besoin ne le justifie pas.
+
+## Regles de workflow local
+
+- Apres toute code review approuvee qui modifie des artefacts Odoo charges par le serveur (`models/`, `views/`, `security/`, `__manifest__.py`), rafraichir l'environnement manuel local avant de clore la review: redemarrer `odoo-19` puis upgrader `evm` sur `evm_dev`.
