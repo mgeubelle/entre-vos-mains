@@ -45,7 +45,7 @@ so that les demandes legitimes puissent entrer dans le parcours de remboursement
 ## Dev Notes
 
 - Dependances: Stories 1.1 a 1.5.
-- `sessions_authorized` ne peut jamais depasser `sessions_requested`.
+- `authorized_session_count` ne peut jamais depasser `requested_session_count`.
 - La logique de plafond annuel est bloquante a l'acceptation; ne pas la reporter a une story ulterieure.
 
 ### Project Structure Notes
@@ -68,4 +68,3 @@ GPT-5 Codex
 ### Completion Notes List
 
 - Story prete pour execution par `dev-story`
-

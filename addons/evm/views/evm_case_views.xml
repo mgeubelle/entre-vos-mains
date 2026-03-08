@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="evm_case_view_list" model="ir.ui.view">
+        <field name="name">evm.case.list</field>
+        <field name="model">evm.case</field>
+        <field name="arch" type="xml">
+            <list string="Dossiers" default_order="create_date desc">
+                <field name="name"/>
+                <field name="state"/>
+                <field name="create_date"/>
+                <field name="patient_display_name" string="Patient"/>
+                <field name="requested_session_count"/>
+                <field name="authorized_session_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="evm_case_view_form" model="ir.ui.view">
+        <field name="name">evm.case.form</field>
+        <field name="model">evm.case</field>
+        <field name="arch" type="xml">
+            <form string="Dossier">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="state"/>
+                            <field name="create_date" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="kine_user_id"/>
+                            <field name="patient_user_id"/>
+                            <field name="patient_display_name" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Suivi">
+                        <field name="requested_session_count"/>
+                        <field name="authorized_session_count"/>
+                    </group>
+                </sheet>
+                <chatter reload_on_follower="True"/>
+            </form>
+        </field>
+    </record>
+
+    <record id="evm_case_action" model="ir.actions.act_window">
+        <field name="name">Dossiers</field>
+        <field name="res_model">evm.case</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem
+        id="evm_menu_root"
+        name="Entre Vos Mains"
+        groups="evm.group_evm_fondation,evm.group_evm_admin"
+        sequence="10"
+    />
+
+    <menuitem
+        id="evm_case_menu"
+        name="Dossiers"
+        parent="evm_menu_root"
+        action="evm_case_action"
+        groups="evm.group_evm_fondation,evm.group_evm_admin"
+        sequence="10"
+    />
+</odoo>

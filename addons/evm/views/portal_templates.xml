@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="evm_portal_breadcrumbs" inherit_id="portal.portal_breadcrumbs" priority="30">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li
+                t-if="page_name == 'evm_cases' or page_name == 'evm_case'"
+                t-attf-class="breadcrumb-item #{'active' if page_name == 'evm_cases' else ''}"
+            >
+                <a t-if="page_name == 'evm_case'" t-attf-href="/my/evm/cases?{{ keep_query() }}">Mes dossiers</a>
+                <t t-else="">Mes dossiers</t>
+            </li>
+            <li t-if="page_name == 'evm_case'" class="breadcrumb-item active">
+                <t t-esc="case.name"/>
+            </li>
+        </xpath>
+    </template>
+
+    <template id="evm_portal_my_home" inherit_id="portal.portal_my_home" priority="30">
+        <xpath expr="//div[@id='portal_common_category']" position="inside">
+            <t t-if="request.env.user.has_group('evm.group_evm_kine')" t-call="portal.portal_docs_entry">
+                <t t-set="icon" t-value="'/portal/static/src/img/portal-connection.svg'"/>
+                <t t-set="title">Mes dossiers</t>
+                <t t-set="text">Suivre les dossiers que vous avez introduits.</t>
+                <t t-set="url" t-value="'/my/evm/cases'"/>
+                <t t-set="placeholder_count" t-value="'evm_case_count'"/>
+            </t>
+        </xpath>
+    </template>
+
+    <template id="evm_portal_my_cases" name="Mes dossiers kine">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Mes dossiers</t>
+            </t>
+
+            <div t-if="not cases" class="alert alert-warning" role="alert">
+                Aucun dossier n'est disponible pour votre compte.
+            </div>
+
+            <t t-if="cases" t-call="portal.portal_table">
+                <thead>
+                    <tr>
+                        <th>Dossier</th>
+                        <th>Statut</th>
+                        <th>Patient</th>
+                        <th class="text-end">Creation</th>
+                    </tr>
+                </thead>
+                <t t-foreach="cases" t-as="case">
+                    <tr>
+                        <td>
+                            <a t-att-href="'/my/evm/cases/%s' % case.id">
+                                <span t-field="case.name"/>
+                            </a>
+                        </td>
+                        <td>
+                            <span t-field="case.state"/>
+                        </td>
+                        <td>
+                            <span t-esc="case.patient_display_name"/>
+                        </td>
+                        <td class="text-end">
+                            <span t-field="case.create_date" t-options="{'widget': 'date'}"/>
+                        </td>
+                    </tr>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <template id="evm_portal_my_case" name="Detail dossier kine">
+        <t t-call="portal.portal_layout">
+            <div class="row g-3">
+                <div class="col-12 col-xl-8">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                <div>
+                                    <p class="text-muted mb-1">Dossier</p>
+                                    <h2 class="h4 mb-0">
+                                        <span t-field="case.name"/>
+                                    </h2>
+                                </div>
+                                <div class="text-start text-md-end">
+                                    <p class="text-muted mb-1">Statut</p>
+                                    <div class="fw-semibold">
+                                        <span t-field="case.state"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Patient</p>
+                                    <div class="fw-semibold" t-esc="case.patient_display_name"/>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Creation</p>
+                                    <div class="fw-semibold">
+                                        <span t-field="case.create_date" t-options="{'widget': 'date'}"/>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Seances demandees</p>
+                                    <div class="fw-semibold" t-esc="case.requested_session_count"/>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Seances autorisees</p>
+                                    <div class="fw-semibold">
+                                        <t t-if="case.authorized_session_count">
+                                            <span t-esc="case.authorized_session_count"/>
+                                        </t>
+                                        <t t-else="">Non renseigne</t>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mt-3">
+                        <div class="card-body">
+                            <h3 class="h5 mb-3">Historique d'activite</h3>
+                            <div t-if="history_messages" class="d-flex flex-column gap-3">
+                                <div t-foreach="history_messages" t-as="message" class="border rounded p-3 bg-white">
+                                    <div class="small text-muted mb-2">
+                                        <span t-if="message.author_id" t-esc="message.author_id.display_name"/>
+                                        <span t-if="message.author_id"> - </span>
+                                        <span t-field="message.date" t-options="{'widget': 'datetime'}"/>
+                                    </div>
+                                    <div t-field="message.body"/>
+                                </div>
+                            </div>
+                            <p t-else="" class="text-muted mb-0">Aucune activite autorisee n'est encore disponible.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

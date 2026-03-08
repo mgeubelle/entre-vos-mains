@@ -52,6 +52,11 @@ class TestEvmSecurity(TransactionCase):
                 expected,
             )
 
+    def test_kine_case_record_rule_is_bound_to_connected_user(self):
+        rule = self.env.ref("evm.evm_case_rule_kine_own")
+
+        self.assertEqual(rule.domain_force, "[('kine_user_id', '=', user.id)]")
+
     def _create_security_fixture(self):
         kine_user = new_test_user(self.env, login="kine1", groups="evm.group_evm_kine")
         other_kine_user = new_test_user(self.env, login="kine2", groups="evm.group_evm_kine")

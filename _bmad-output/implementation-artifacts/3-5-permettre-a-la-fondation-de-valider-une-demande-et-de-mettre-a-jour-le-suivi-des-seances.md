@@ -17,7 +17,7 @@ so that le dossier reste a jour et pret pour le paiement.
 
 2. **Given** une demande validee
    **When** la mise a jour du dossier est appliquee
-   **Then** le systeme preserve la coherence entre `sessions_authorized`, `sessions_consumed` et le solde restant
+   **Then** le systeme preserve la coherence entre `authorized_session_count`, `sessions_consumed` et le solde restant
    **And** le patient peut ensuite retrouver ces informations dans son dossier
 
 3. **Given** une validation qui depasserait les regles du dossier
@@ -29,7 +29,7 @@ so that le dossier reste a jour et pret pour le paiement.
 
 - [ ] Implementer l'action de validation metier de la demande
 - [ ] Mettre a jour `sessions_consumed` et le solde restant du dossier
-- [ ] Bloquer toute incoherence vis-a-vis de `sessions_authorized`
+- [ ] Bloquer toute incoherence vis-a-vis de `authorized_session_count`
 - [ ] Rendre les compteurs mis a jour visibles cote patient et fondation
 
 ## Dev Notes
@@ -58,4 +58,3 @@ GPT-5 Codex
 ### Completion Notes List
 
 - Story prete pour execution par `dev-story`
-

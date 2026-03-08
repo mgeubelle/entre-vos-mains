@@ -1,6 +1,6 @@
 # Story 1.4: Permettre au kinesitherapeute d'acceder a son espace et consulter ses dossiers
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -22,10 +22,10 @@ so that je puisse suivre mes prises en charge sans voir celles des autres.
 
 ## Tasks / Subtasks
 
-- [ ] Finaliser le modele `evm.case` avec les champs minimaux necessaires a la consultation
-- [ ] Ajouter les vues liste/detail et, si necessaire, le portail ou menu d'entree pour le role kine
-- [ ] Restreindre l'acces via record rules pour n'afficher que les dossiers du kinesitherapeute connecte
-- [ ] Verifier les informations visibles et l'absence d'acces transverse
+- [x] Finaliser le modele `evm.case` avec les champs minimaux necessaires a la consultation
+- [x] Ajouter les vues liste/detail et, si necessaire, le portail ou menu d'entree pour le role kine
+- [x] Restreindre l'acces via record rules pour n'afficher que les dossiers du kinesitherapeute connecte
+- [x] Verifier les informations visibles et l'absence d'acces transverse
 
 ## Dev Notes
 
@@ -53,4 +53,26 @@ GPT-5 Codex
 ### Completion Notes List
 
 - Story prete pour execution par `dev-story`
+- Modele `evm.case` enrichi avec statut, compteurs de seances, libelle patient calcule et historique `mail.thread`.
+- Portail kine ajoute avec entree `Mes dossiers`, liste `/my/evm/cases` et detail `/my/evm/cases/<id>`.
+- Les record rules existantes ont ete preservees et verrouillees par tests sur le domaine `kine_user_id = user.id` et sur le redirect portail en acces transverse.
+- Validation finale: `make quality` OK.
 
+### File List
+
+- addons/evm/__init__.py
+- addons/evm/__manifest__.py
+- addons/evm/controllers/__init__.py
+- addons/evm/controllers/portal.py
+- addons/evm/models/evm_case.py
+- addons/evm/tests/__init__.py
+- addons/evm/tests/test_case_consultation.py
+- addons/evm/tests/test_kine_portal.py
+- addons/evm/tests/test_security.py
+- addons/evm/views/evm_case_views.xml
+- addons/evm/views/portal_templates.xml
+
+### Change Log
+
+- 2026-03-08: story passee en `in-progress` et socle de consultation `evm.case` implemente.
+- 2026-03-08: portail kine, vues internes et verifications de cloisonnement completes; story promue en `review`.

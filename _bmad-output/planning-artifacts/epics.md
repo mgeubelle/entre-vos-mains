@@ -50,8 +50,8 @@ NFR10: L’interface visible utilisateur doit être en français, tandis que le 
 - Le module principal cible est `addons/evm` avec conventions de nommage `evm_` pour les `xml_id`.
 - Les modèles métier principaux sont `evm.case` pour le dossier et `evm.payment_request` pour la demande de paiement.
 - Les pièces jointes doivent utiliser `ir.attachment` avec filestore local Odoo, rattachées aux `evm.payment_request`, avec une vue agrégée des documents du dossier.
-- Le suivi des séances V1 est piloté par les champs `sessions_requested`, `sessions_authorized`, `sessions_consumed` au niveau dossier et `sessions_count` au niveau demande, sans saisie séance-par-séance.
-- `sessions_requested` est saisi par le kiné lors de la création du dossier; `sessions_authorized` est fixé par la fondation lors de l'acceptation, sans dépasser la demande initiale.
+- Le suivi des séances V1 est piloté par les champs `requested_session_count`, `authorized_session_count`, `sessions_consumed` au niveau dossier et `sessions_count` au niveau demande, sans saisie séance-par-séance.
+- `requested_session_count` est saisi par le kiné lors de la création du dossier; `authorized_session_count` est fixé par la fondation lors de l'acceptation, sans dépasser la demande initiale.
 - Un plafond annuel global de séances couvertes par la fondation doit être configurable dans l'application et pris en compte dans le traitement métier.
 - La création d’un `account.payment` en brouillon doit intervenir au statut demande validée, avec lien explicite `payment_id` et garde-fou d’idempotence pour éviter les doublons.
 - Les paiements restent réalisés hors plateforme; le statut payé est confirmé dans l’application mais le posting comptable peut rester manuel en V1.
@@ -465,7 +465,7 @@ So that le dossier reste a jour et pret pour le paiement.
 
 **Given** une demande validee
 **When** la mise a jour du dossier est appliquee
-**Then** le systeme preserve la coherence entre `sessions_authorized`, `sessions_consumed` et le solde restant
+**Then** le systeme preserve la coherence entre `authorized_session_count`, `sessions_consumed` et le solde restant
 **And** le patient peut ensuite retrouver ces informations dans son dossier
 
 **Given** une validation qui depasserait les regles du dossier

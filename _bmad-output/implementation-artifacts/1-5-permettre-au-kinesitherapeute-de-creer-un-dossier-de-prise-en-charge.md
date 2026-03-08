@@ -35,7 +35,7 @@ so that je puisse initier une demande d'aide sans friction administrative.
 ## Dev Notes
 
 - Dependances: Stories 1.1 a 1.4.
-- `sessions_requested` est saisi ici et doit servir de borne pour la suite du workflow.
+- `requested_session_count` est saisi ici et doit servir de borne pour la suite du workflow.
 - Garder le parcours court et accessible: erreurs proches des champs + resume global si pertinent.
 
 ### Project Structure Notes
@@ -58,4 +58,3 @@ GPT-5 Codex
 ### Completion Notes List
 
 - Story prete pour execution par `dev-story`
-

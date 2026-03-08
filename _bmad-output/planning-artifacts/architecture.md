@@ -137,9 +137,9 @@ Ce checkout Odoo local est utilise ici comme source d'outillage et de reference 
 - `evm.payment_request` (demande): workflow (soumis / à compléter / validé / payé / refusé), montant, pièces jointes, `sessions_count`.
 
 **Sessions Tracking (V1):**
-- Champs au niveau dossier: `sessions_authorized`, `sessions_consumed`, reste calculé.
-- `sessions_requested` est défini par le kiné lors de la création du dossier et représente le nombre maximum demandé pour ce dossier.
-- `sessions_authorized` est fixé par la fondation lors de l'acceptation du dossier et ne peut pas dépasser `sessions_requested`.
+- Champs au niveau dossier: `authorized_session_count`, `sessions_consumed`, reste calculé.
+- `requested_session_count` est défini par le kiné lors de la création du dossier et représente le nombre maximum demandé pour ce dossier.
+- `authorized_session_count` est fixé par la fondation lors de l'acceptation du dossier et ne peut pas dépasser `requested_session_count`.
 - Chaque `evm.payment_request` porte `sessions_count`.
 - Encodage: le patient propose `sessions_count`, la fondation valide avec possibilité d’override.
 - La fondation dispose d'un plafond annuel global de séances couvertes, configurable dans l'application. Ce plafond s'applique à l'ensemble des dossiers et constitue une contrainte métier bloquante lors de l'acceptation des dossiers et du suivi de consommation.
