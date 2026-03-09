@@ -1,6 +1,6 @@
 # Story 1.4: Permettre au kinesitherapeute d'acceder a son espace et consulter ses dossiers
 
-Status: review
+Status: done
 
 ## Story
 
@@ -76,3 +76,24 @@ GPT-5 Codex
 
 - 2026-03-08: story passee en `in-progress` et socle de consultation `evm.case` implemente.
 - 2026-03-08: portail kine, vues internes et verifications de cloisonnement completes; story promue en `review`.
+- 2026-03-09: code review adverse terminee; story approuvee et promue en `done`.
+
+## Senior Developer Review (AI)
+
+### Outcome
+
+Approved.
+
+### Findings
+
+- Aucun point bloquant ou correctif necessaire n'a ete identifie sur les AC de la story 1.4 dans l'etat courant du code.
+
+### Residual Risks
+
+- Low: la couverture `HttpCase` verifie bien l'acces transverse entre kines et le rendu principal, mais ne couvre pas encore explicitement les redirects des routes liste/creation pour un patient authentifie.
+- Low: le controleur renseigne `request.session["my_evm_cases_history"]` sans reutiliser ensuite le mecanisme `_get_page_view_values`, ce qui laisse un reliquat de navigation non exploite.
+- Low: la preuve de cloisonnement ORM depend de tests securite transverses (`test_security.py`) plus que d'une trace explicite dans la story, ce qui complique legerement l'audit de continute entre 1.3, 1.4 et 1.7.
+
+### Verification
+
+- `make quality`

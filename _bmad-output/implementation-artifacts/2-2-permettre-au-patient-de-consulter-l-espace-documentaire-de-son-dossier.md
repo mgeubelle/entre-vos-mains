@@ -29,7 +29,7 @@ so that je puisse retrouver les pieces deja partagees en toute securite.
 
 ## Dev Notes
 
-- Dependances: Stories 2.1 et socle de securite des stories 1.x.
+- Dependances: Stories 2.1, 2.3 et socle de securite des stories 1.x.
 - L'architecture impose une attache des documents sur `evm.payment_request`, pas directement sur `evm.case`.
 - Le dossier doit seulement agreger les pieces des demandes autorisees.
 
@@ -53,4 +53,3 @@ GPT-5 Codex
 ### Completion Notes List
 
 - Story prete pour execution par `dev-story`
-

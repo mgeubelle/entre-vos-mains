@@ -11,9 +11,9 @@ Epic 1: Ouvrir le dossier
   1.7 Ouvrir l’accès patient après acceptation du dossier
 
 Epic 2: Parcours patient
+  2.3 Permettre au patient de créer une demande de paiement
   2.1 Permettre au patient de consulter son dossier accepté dans le portail
   2.2 Permettre au patient de consulter l’espace documentaire de son dossier
-  2.3 Permettre au patient de créer une demande de paiement
   2.4 Permettre au patient de déposer des factures et justificatifs sur une demande
   2.5 Permettre au patient de soumettre une demande complète à la fondation
 

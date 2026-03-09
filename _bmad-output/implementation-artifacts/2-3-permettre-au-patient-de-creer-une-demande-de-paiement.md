@@ -30,9 +30,10 @@ so that je puisse solliciter un remboursement sur base de mes justificatifs.
 
 ## Dev Notes
 
-- Dependances: Stories 1.7, 2.1 et 2.2.
+- Dependances: Story 1.7.
 - `sessions_count` est saisi par le patient puis pourra etre ajuste par la fondation en Epic 3.
 - Le montant total reste facultatif en V1; ne pas imposer une regle metier absente du PRD.
+- Cette story fournit le socle modele/workflow attendu par la story 2.1 pour afficher les demandes existantes dans le portail patient.
 
 ### Project Structure Notes
 
@@ -54,4 +55,3 @@ GPT-5 Codex
 ### Completion Notes List
 
 - Story prete pour execution par `dev-story`
-

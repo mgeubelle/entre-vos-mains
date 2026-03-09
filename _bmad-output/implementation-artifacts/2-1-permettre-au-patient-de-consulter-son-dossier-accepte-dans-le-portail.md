@@ -34,9 +34,10 @@ so that je comprenne l'etat de ma prise en charge et les actions disponibles.
 
 ## Dev Notes
 
-- Dependances: Epic 1 completee au moins jusqu'a la Story 1.7.
+- Dependances: Stories 1.7 et 2.3.
 - Les compteurs a montrer: `authorized_session_count`, `sessions_consumed` et le reste utile au patient.
 - L'UX doit rester sobre, sans scroll horizontal sur parcours critique.
+- Cette story suppose que le socle minimal de `evm.payment_request` existe deja pour afficher une liste exploitable des demandes.
 
 ### Project Structure Notes
 
