@@ -18,6 +18,8 @@
 - **Best practices Odoo 19**: architecture et patterns idiomatiques Odoo (modèles, vues, contrôleurs, sécurité, assets, etc.).
 - **KISS**: préférer des solutions simples, lisibles et maintenables; éviter la sur-ingénierie.
 - **Pragmatique**: minimiser les dépendances et la complexité tant que le besoin ne le justifie pas.
+- **Wizards en exception**: éviter les wizards custom quand une saisie inline sur le modèle et une action métier dédiée (`action_*`) couvrent le besoin.
+- **Justification explicite**: n'introduire un wizard que si la donnée est transitoire, si l'action est réellement multi-étapes ou bulk, ou si une confirmation/prévisualisation avant effet irréversible améliore clairement l'UX.
 
 ## Regles de workflow local
 

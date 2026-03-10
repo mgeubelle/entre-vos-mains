@@ -244,11 +244,14 @@ Ce checkout Odoo local est utilise ici comme source d'outillage et de reference 
 - `xml_id` uniques, préfixés `evm_`.
 - Pas de logique métier dans les vues; privilégier méthodes Python et actions.
 - Les messages et intitulés UI en français; éviter l’anglais dans `string=`, `help=`, labels.
+- Par défaut, éviter les wizards custom si une saisie inline sur le modèle et un bouton `action_*` suffisent.
+- Introduire un wizard uniquement pour un vrai besoin transitoire: confirmation multi-étapes, action bulk, collecte de données temporaires, ou prévisualisation avant effet irréversible.
 
 ### Workflow & Traceability Patterns
 
 - Les transitions se font via méthodes `action_*` (une responsabilité par action).
 - Chaque transition importante poste un message dans le chatter (traçabilité) + tracking sur champs clés.
+- Pour les workflows simples, préférer la combinaison "champ porté par le modèle + transition via `action_*`" plutôt qu'un wizard dédié, afin de réduire le boilerplate et garder la logique métier au même endroit.
 
 ### Attachment Access Pattern (V1)
 
