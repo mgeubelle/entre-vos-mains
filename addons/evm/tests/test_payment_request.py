@@ -53,6 +53,7 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn("sessions_count", payment_request_model._fields)
         self.assertIn("amount_total", payment_request_model._fields)
         self.assertIn("completion_request_reason", payment_request_model._fields)
+        self.assertIn("refusal_reason", payment_request_model._fields)
         self.assertEqual(
             list(state_selection),
             ["draft", "submitted", "to_complete", "validated", "paid", "refused", "closed"],
@@ -410,6 +411,50 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertTrue(any("retournee" in (body or "").lower() for body in history_messages.mapped("body")))
         self.assertTrue(any("detail des seances" in (body or "").lower() for body in history_messages.mapped("body")))
 
+    def test_foundation_can_refuse_submitted_request_with_reason_history_and_active_queue_exit(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "amount_total": 45,
+            }
+        )
+        foundation_user = new_test_user(self.env, login="fondation_payment_request_refusal", groups="evm.group_evm_fondation")
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-refus.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+
+        result = payment_request.with_user(foundation_user).action_refuse(
+            "La demande n'est pas recevable car les seances ne correspondent pas au dossier accepte."
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(payment_request.state, "refused")
+        self.assertEqual(
+            payment_request.refusal_reason,
+            "La demande n'est pas recevable car les seances ne correspondent pas au dossier accepte.",
+        )
+        self.assertFalse(payment_request.completion_request_reason)
+        history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+        self.assertTrue(any("refusee" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(any("pas recevable" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertFalse(
+            self.env["evm.payment_request"].with_user(foundation_user).search([("state", "=", "submitted"), ("id", "=", payment_request.id)])
+        )
+        self.assertEqual(
+            self.env["evm.payment_request"].with_user(foundation_user).search([("state", "=", "refused"), ("id", "=", payment_request.id)]),
+            payment_request,
+        )
+
     def test_patient_can_complete_request_to_complete_and_resubmit_it(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
             {
@@ -594,7 +639,97 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn('name="action_return_to_complete"', form_view.arch_db)
         self.assertIn('name="completion_request_reason"', form_view.arch_db)
         self.assertIn("readonly=\"state != 'submitted'\"", form_view.arch_db)
-        self.assertIn("required=\"state == 'submitted'\"", form_view.arch_db)
+        self.assertNotIn('name="completion_request_reason" required="state == \'submitted\'"', form_view.arch_db)
+        self.assertNotIn("required=\"state == 'submitted'\"", form_view.arch_db)
+
+    def test_foundation_can_prepare_refusal_reason_inline_and_refuse_from_form(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_refusal_form",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-refus-form.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+
+        payment_request.with_user(foundation_user).write(
+            {
+                "refusal_reason": "Refus fonde sur des seances hors perimetre.",
+            }
+        )
+        action_result = payment_request.with_user(foundation_user).action_refuse()
+        form_view = self.env.ref("evm.evm_payment_request_view_form")
+
+        self.assertTrue(action_result)
+        self.assertEqual(payment_request.state, "refused")
+        self.assertEqual(payment_request.refusal_reason, "Refus fonde sur des seances hors perimetre.")
+        self.assertIn('name="action_refuse"', form_view.arch_db)
+        self.assertIn('name="refusal_reason"', form_view.arch_db)
+        self.assertIn("readonly=\"state != 'submitted'\"", form_view.arch_db)
+        self.assertNotIn('name="refusal_reason" required="state == \'submitted\'"', form_view.arch_db)
+        self.assertNotIn("required=\"state == 'submitted'\"", form_view.arch_db)
+
+    def test_refusal_requires_foundation_user_submitted_state_reason_and_blocks_later_transitions(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_refusal_rules",
+            groups="evm.group_evm_fondation",
+        )
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(self.patient_user).action_refuse("Demande non recevable.")
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(foundation_user).write({"refusal_reason": "Motif brouillon"})
+
+        with self.assertRaisesRegex(ValidationError, "soumise"):
+            payment_request.with_user(foundation_user).action_refuse("Demande non recevable.")
+
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-refus-regles.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+
+        with self.assertRaisesRegex(ValidationError, "motif"):
+            payment_request.with_user(foundation_user).action_refuse("   ")
+
+        payment_request.with_user(foundation_user).action_refuse("Demande non recevable.")
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(foundation_user).write({"refusal_reason": "Nouveau motif"})
+        with self.assertRaisesRegex(AccessError, "cloturee"):
+            payment_request.with_user(foundation_user).write({"amount_total": 99})
+        with self.assertRaisesRegex(AccessError, "cloturee"):
+            payment_request.with_user(foundation_user).write({"sessions_count": 5})
+        with self.assertRaisesRegex(ValidationError, "soumise"):
+            payment_request.with_user(foundation_user).action_return_to_complete("Merci de completer.")
+        with self.assertRaisesRegex(ValidationError, "brouillon ou a completer"):
+            payment_request.with_user(self.patient_user).action_submit()
 
     def test_foundation_can_open_submitted_request_attachments_from_processing_flow(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
@@ -681,6 +816,9 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn('create="false"', list_view.arch_db)
         self.assertIn('delete="false"', form_view.arch_db)
         self.assertIn("attachment_ids", form_view.arch_db)
+        self.assertIn('name="action_refuse"', form_view.arch_db)
+        self.assertIn('name="refusal_reason"', form_view.arch_db)
+        self.assertIn('name="refused"', self.env.ref("evm.evm_payment_request_view_search").arch_db)
 
     def test_foundation_processing_action_is_limited_to_submitted_queue_and_allowed_groups(self):
         action = self.env.ref("evm.evm_payment_request_action")

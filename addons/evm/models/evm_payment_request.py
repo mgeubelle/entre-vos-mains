@@ -75,6 +75,11 @@ class EvmPaymentRequest(models.Model):
         tracking=True,
         copy=False,
     )
+    refusal_reason = fields.Text(
+        string="Motif du refus",
+        tracking=True,
+        copy=False,
+    )
     currency_id = fields.Many2one(
         "res.currency",
         default=lambda self: self.env.company.currency_id.id,
@@ -85,6 +90,7 @@ class EvmPaymentRequest(models.Model):
     _workflow_only_write_fields = {"state", "submitted_on"}
     _immutable_write_fields = {"case_id", "patient_user_id", "currency_id"}
     _patient_editable_fields = {"name", "sessions_count", "amount_total"}
+    _final_state_locked_write_fields = {"name", "sessions_count", "amount_total"}
     _portal_allowed_attachment_extensions = {
         "pdf": "application/pdf",
         "jpg": "image/jpeg",
@@ -109,15 +115,22 @@ class EvmPaymentRequest(models.Model):
         ):
             raise AccessError(_("Seul un membre de la fondation peut traiter cette demande."))
 
-    def _ensure_submitted_requests(self):
+    def _ensure_submitted_requests(self, error_message=None):
         if any(record.state != "submitted" for record in self):
-            raise ValidationError(_("Seule une demande soumise peut etre retournee a completer."))
+            raise ValidationError(error_message or _("Seule une demande soumise peut etre traitee par cette action."))
 
     @api.model
     def _sanitize_completion_request_reason(self, reason):
         sanitized_reason = (reason or "").strip()
         if not sanitized_reason:
             raise ValidationError(_("Veuillez renseigner un motif de retour exploitable pour le patient."))
+        return sanitized_reason
+
+    @api.model
+    def _sanitize_refusal_reason(self, reason):
+        sanitized_reason = (reason or "").strip()
+        if not sanitized_reason:
+            raise ValidationError(_("Veuillez renseigner un motif de refus exploitable."))
         return sanitized_reason
 
     def _get_attachment_domain(self):
@@ -321,6 +334,7 @@ class EvmPaymentRequest(models.Model):
             values = {
                 "state": "submitted",
                 "submitted_on": submitted_on,
+                "refusal_reason": False,
             }
             if previous_state == "to_complete":
                 values["completion_request_reason"] = False
@@ -341,7 +355,7 @@ class EvmPaymentRequest(models.Model):
 
     def action_return_to_complete(self, reason=None):
         self._ensure_foundation_can_process()
-        self._ensure_submitted_requests()
+        self._ensure_submitted_requests(_("Seule une demande soumise peut etre retournee a completer."))
 
         for record in self:
             sanitized_reason = self._sanitize_completion_request_reason(
@@ -351,11 +365,34 @@ class EvmPaymentRequest(models.Model):
                 {
                     "state": "to_complete",
                     "completion_request_reason": sanitized_reason,
+                    "refusal_reason": False,
                 }
             )
             record.message_post(
                 body=_(
                     "Demande retournee au patient pour complementation. Motif: %(reason)s",
+                    reason=sanitized_reason,
+                ),
+                subtype_xmlid="mail.mt_comment",
+            )
+        return True
+
+    def action_refuse(self, reason=None):
+        self._ensure_foundation_can_process()
+        self._ensure_submitted_requests(_("Seule une demande soumise peut etre refusee."))
+
+        for record in self:
+            sanitized_reason = self._sanitize_refusal_reason(reason if reason is not None else record.refusal_reason)
+            record.with_context(evm_allow_payment_request_workflow_write=True).write(
+                {
+                    "state": "refused",
+                    "completion_request_reason": False,
+                    "refusal_reason": sanitized_reason,
+                }
+            )
+            record.message_post(
+                body=_(
+                    "Demande refusee par la fondation. Motif: %(reason)s",
                     reason=sanitized_reason,
                 ),
                 subtype_xmlid="mail.mt_comment",
@@ -409,6 +446,13 @@ class EvmPaymentRequest(models.Model):
             raise AccessError(_("Le statut de la demande ne peut etre modifie que via une action metier."))
         if set(vals) & self._immutable_write_fields:
             raise AccessError(_("Le dossier et les metadonnees systeme de la demande ne peuvent pas etre modifies."))
+        if (
+            set(vals) & self._final_state_locked_write_fields
+            and not allow_workflow_write
+            and self._is_internal_manual_management_context()
+            and any(record.state == "refused" for record in self)
+        ):
+            raise AccessError(_("Une demande refusee est cloturee et ne peut plus etre modifiee."))
         if "name" in vals:
             vals["name"] = self._sanitize_name(vals["name"])
         if "completion_request_reason" in vals and not allow_workflow_write:
@@ -416,6 +460,11 @@ class EvmPaymentRequest(models.Model):
             if any(record.state != "submitted" for record in self):
                 raise AccessError(_("Le motif de retour ne peut etre prepare que sur une demande soumise."))
             vals["completion_request_reason"] = self._sanitize_completion_request_reason(vals["completion_request_reason"])
+        if "refusal_reason" in vals and not allow_workflow_write:
+            self._ensure_foundation_can_process()
+            if any(record.state != "submitted" for record in self):
+                raise AccessError(_("Le motif de refus ne peut etre prepare que sur une demande soumise."))
+            vals["refusal_reason"] = self._sanitize_refusal_reason(vals["refusal_reason"])
         if self._is_portal_patient_context():
             if set(vals) - self._patient_editable_fields and not allow_workflow_write:
                 raise AccessError(_("Le patient ne peut modifier que les informations de saisie de sa demande."))

@@ -236,6 +236,43 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             detail_response.text,
         )
 
+    def test_patient_portal_case_detail_shows_refusal_reason_for_refused_request(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_portal_refusal",
+            groups="evm.group_evm_fondation",
+            name="Fondation Paiement",
+        )
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande refusee portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "submitted",
+            }
+        )
+        payment_request.with_user(foundation_user).action_refuse(
+            "La demande ne peut pas etre prise en charge car les justificatifs sont hors perimetre."
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response_text = html.unescape(detail_response.text)
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Demande refusee portail", response_text)
+        self.assertIn("Demande refusee", response_text)
+        self.assertIn("Motif du refus", response_text)
+        self.assertIn(
+            "La demande ne peut pas etre prise en charge car les justificatifs sont hors perimetre.",
+            response_text,
+        )
+        self.assertIn("Historique des echanges", response_text)
+        self.assertIn("Demande refusee par la fondation", response_text)
+        self.assertNotIn(f'/my/evm/payment-requests/{payment_request.id}/update', detail_response.text)
+        self.assertNotIn(f'/my/evm/payment-requests/{payment_request.id}/attachments/upload', detail_response.text)
+        self.assertNotIn(f'/my/evm/payment-requests/{payment_request.id}/submit', detail_response.text)
+
     def test_patient_portal_case_detail_can_resubmit_request_to_complete(self):
         payment_request = self.env["evm.payment_request"].create(
             {

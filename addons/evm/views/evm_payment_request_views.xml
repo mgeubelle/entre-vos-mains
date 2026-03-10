@@ -67,6 +67,13 @@
                         class="btn-secondary"
                         invisible="state != 'submitted'"
                     />
+                    <button
+                        name="action_refuse"
+                        type="object"
+                        string="Refuser"
+                        class="btn-secondary"
+                        invisible="state != 'submitted'"
+                    />
                     <field name="state" widget="statusbar" statusbar_visible="draft,submitted,to_complete,validated,paid,refused,closed"/>
                 </header>
                 <sheet>
@@ -94,8 +101,13 @@
                             name="completion_request_reason"
                             placeholder="Expliquez clairement ce que le patient doit completer."
                             readonly="state != 'submitted'"
-                            required="state == 'submitted'"
                             invisible="state != 'submitted' and not completion_request_reason"
+                        />
+                        <field
+                            name="refusal_reason"
+                            placeholder="Expliquez clairement pourquoi la demande n'est pas recevable."
+                            readonly="state != 'submitted'"
+                            invisible="state != 'submitted' and not refusal_reason"
                         />
                     </group>
                     <group string="Justificatifs">
