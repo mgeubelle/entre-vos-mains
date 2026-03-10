@@ -333,12 +333,27 @@
                                         <t t-esc="upload_flash.get('message')"/>
                                     </div>
                                     <div
+                                        t-if="submission_flash and submission_flash.get('request_id') == payment_request.id"
+                                        class="alert alert-success mt-3 mb-0"
+                                        role="alert"
+                                    >
+                                        <t t-esc="submission_flash.get('message')"/>
+                                    </div>
+                                    <div
                                         t-if="upload_errors.get(payment_request.id)"
                                         class="alert alert-danger mt-3 mb-0"
                                         role="alert"
                                     >
                                         <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
                                         <p class="mb-0" t-esc="upload_errors.get(payment_request.id)"/>
+                                    </div>
+                                    <div
+                                        t-if="submission_errors.get(payment_request.id)"
+                                        class="alert alert-danger mt-3 mb-0"
+                                        role="alert"
+                                    >
+                                        <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
+                                        <p class="mb-0" t-esc="submission_errors.get(payment_request.id)"/>
                                     </div>
                                     <form
                                         t-if="payment_request.state == 'draft'"
@@ -368,6 +383,18 @@
                                         <div class="col-12 d-flex justify-content-end">
                                             <button type="submit" class="btn btn-outline-primary">Ajouter des justificatifs</button>
                                         </div>
+                                    </form>
+                                    <form
+                                        t-if="payment_request.state == 'draft'"
+                                        t-att-action="'/my/evm/payment-requests/%s/submit' % payment_request.id"
+                                        method="post"
+                                        class="d-flex justify-content-end mt-3"
+                                    >
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
+                                        <input type="hidden" name="document_page" t-att-value="document_page"/>
+                                        <input type="hidden" name="submission_token" t-att-value="submission_tokens.get(payment_request.id)"/>
+                                        <button type="submit" class="btn btn-primary">Soumettre la demande</button>
                                     </form>
                                 </div>
                             </div>

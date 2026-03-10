@@ -507,6 +507,99 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertEqual(upload_response.status_code, 303)
         self.assertRegex(upload_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}/page/2\?document_page=2$")
 
+    def test_patient_portal_case_detail_submits_complete_request(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        self.env["ir.attachment"].create(
+            {
+                "name": "facture-a-soumettre.pdf",
+                "datas": base64.b64encode(MINIMAL_PDF),
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": self.accepted_case_draft_request.id,
+                "evm_patient_visible": True,
+            }
+        )
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        submit_response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/submit",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "submission_token": self._extract_submission_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(submit_response.status_code, 303)
+        self.assertRegex(submit_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+        self.assertEqual(self.accepted_case_draft_request.state, "submitted")
+
+        success_response = self.url_open(submit_response.headers["Location"])
+        self.assertIn("La demande de paiement a ete soumise a la fondation.", html.unescape(success_response.text))
+        self.assertNotIn("Ajouter des justificatifs", success_response.text)
+
+    def test_patient_portal_case_detail_submission_replay_keeps_success_feedback(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        self.env["ir.attachment"].create(
+            {
+                "name": "facture-replay.pdf",
+                "datas": base64.b64encode(MINIMAL_PDF),
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": self.accepted_case_draft_request.id,
+                "evm_patient_visible": True,
+            }
+        )
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        submit_payload = {
+            "csrf_token": self._extract_csrf_token(detail_response.text),
+            "submission_token": self._extract_submission_token(detail_response.text),
+            "payment_request_page": "1",
+            "document_page": "1",
+        }
+
+        first_submit = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/submit",
+            data=submit_payload,
+            allow_redirects=False,
+        )
+        replay_submit = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/submit",
+            data=submit_payload,
+            allow_redirects=False,
+        )
+
+        self.assertEqual(first_submit.status_code, 303)
+        self.assertEqual(replay_submit.status_code, 303)
+        self.assertRegex(replay_submit.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+
+        replay_response = self.url_open(replay_submit.headers["Location"])
+        self.assertIn("La demande de paiement a deja ete soumise a la fondation.", html.unescape(replay_response.text))
+        self.assertEqual(self.accepted_case_draft_request.state, "submitted")
+
+    def test_patient_portal_case_detail_rejects_incomplete_submission_in_french(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/submit",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "submission_token": self._extract_submission_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        response_text = html.unescape(response.text)
+        self.assertIn("Veuillez corriger les erreurs ci-dessous.", response_text)
+        self.assertIn("Ajoutez au moins un justificatif avant de soumettre la demande.", response_text)
+        self.assertEqual(self.accepted_case_draft_request.state, "draft")
+
     def test_patient_portal_case_detail_rejects_unrelated_or_non_accepted_cases(self):
         self.authenticate(self.patient_login, self.patient_password)
 

@@ -52,6 +52,23 @@ class EvmPaymentRequest(models.Model):
         currency_field="currency_id",
         tracking=True,
     )
+    attachment_ids = fields.Many2many(
+        "ir.attachment",
+        compute="_compute_attachment_data",
+        string="Justificatifs",
+        compute_sudo=True,
+    )
+    attachment_count = fields.Integer(
+        compute="_compute_attachment_data",
+        string="Nombre de justificatifs",
+        compute_sudo=True,
+    )
+    submitted_on = fields.Datetime(
+        string="Date de soumission",
+        tracking=True,
+        readonly=True,
+        copy=False,
+    )
     currency_id = fields.Many2one(
         "res.currency",
         default=lambda self: self.env.company.currency_id.id,
@@ -59,7 +76,7 @@ class EvmPaymentRequest(models.Model):
         string="Devise",
     )
 
-    _workflow_only_write_fields = {"state"}
+    _workflow_only_write_fields = {"state", "submitted_on"}
     _immutable_write_fields = {"case_id", "patient_user_id", "currency_id"}
     _patient_editable_fields = {"name", "sessions_count", "amount_total"}
     _portal_allowed_attachment_extensions = {
@@ -70,6 +87,45 @@ class EvmPaymentRequest(models.Model):
     }
     _portal_max_attachment_size = 10 * 1024 * 1024
     _portal_uploadable_states = {"draft"}
+    _portal_submittable_states = {"draft"}
+
+    def _is_internal_manual_management_context(self):
+        return (
+            not self.env.su
+            and not self._is_portal_patient_context()
+            and (self.env.user.has_group("evm.group_evm_fondation") or self.env.user.has_group("evm.group_evm_admin"))
+        )
+
+    def _get_attachment_domain(self):
+        self.ensure_one()
+        return [
+            ("res_model", "=", self._name),
+            ("res_id", "=", self.id),
+            ("res_field", "=", False),
+            ("type", "=", "binary"),
+        ]
+
+    def _compute_attachment_data(self):
+        attachment_model = self.env["ir.attachment"]
+        attachments_by_request = {}
+        if self.ids:
+            attachments = attachment_model.sudo().search(
+                [
+                    ("res_model", "=", self._name),
+                    ("res_id", "in", self.ids),
+                    ("res_field", "=", False),
+                    ("type", "=", "binary"),
+                ],
+                order="create_date desc, id desc",
+            )
+            for attachment in attachments:
+                attachments_by_request.setdefault(attachment.res_id, attachment_model.browse())
+                attachments_by_request[attachment.res_id] |= attachment
+
+        for record in self:
+            record_attachments = attachments_by_request.get(record.id, attachment_model.browse())
+            record.attachment_ids = record_attachments
+            record.attachment_count = len(record_attachments)
 
     @api.constrains("sessions_count", "amount_total")
     def _check_patient_payload(self):
@@ -133,6 +189,36 @@ class EvmPaymentRequest(models.Model):
         if self.state not in self._portal_uploadable_states:
             raise AccessError(_("Seule une demande en brouillon peut recevoir des justificatifs."))
 
+    def _check_portal_submission_access(self):
+        self.ensure_one()
+        if not self._is_portal_patient_context():
+            raise AccessError(_("Seul le portail patient peut soumettre une demande de paiement."))
+        if self.patient_user_id != self.env.user or self.case_id.state != "accepted":
+            raise AccessError(_("Cette demande de paiement n'est pas accessible depuis votre portail."))
+
+    def _get_submission_attachment_domain(self):
+        return [*self._get_attachment_domain(), ("evm_patient_visible", "=", True)]
+
+    def _get_submission_attachment_count(self):
+        self.ensure_one()
+        return self.env["ir.attachment"].sudo().search_count(self._get_submission_attachment_domain())
+
+    def get_submission_errors(self):
+        self.ensure_one()
+        errors = []
+
+        if self.state not in self._portal_submittable_states:
+            errors.append(_("Seule une demande en brouillon peut etre soumise."))
+        if self.sessions_count <= 0:
+            errors.append(_("Veuillez renseigner un nombre de seances strictement positif."))
+        if not self._get_submission_attachment_count():
+            errors.append(_("Ajoutez au moins un justificatif avant de soumettre la demande."))
+        return errors
+
+    def is_complete_for_submission(self):
+        self.ensure_one()
+        return not self.get_submission_errors()
+
     @api.model
     def _normalize_portal_attachment_upload(self, uploaded_file):
         filename = basename((getattr(uploaded_file, "filename", "") or "").strip())
@@ -186,8 +272,49 @@ class EvmPaymentRequest(models.Model):
             ]
         )
 
+    def action_submit(self):
+        for record in self:
+            record._check_portal_submission_access()
+            errors = record.get_submission_errors()
+            if errors:
+                raise ValidationError("\n".join(errors))
+
+        submitted_on = fields.Datetime.now()
+        for record in self:
+            attachment_count = record._get_submission_attachment_count()
+            record.with_context(evm_allow_payment_request_workflow_write=True).write(
+                {
+                    "state": "submitted",
+                    "submitted_on": submitted_on,
+                }
+            )
+            record.message_post(
+                body=_(
+                    "Demande de paiement soumise par le patient avec %(count)s justificatif(s).",
+                    count=attachment_count,
+                )
+            )
+        return True
+
+    def action_open_attachments(self):
+        self.ensure_one()
+        return {
+            "name": _("Justificatifs"),
+            "type": "ir.actions.act_window",
+            "res_model": "ir.attachment",
+            "view_mode": "list,form",
+            "domain": self._get_attachment_domain(),
+            "context": {
+                "create": False,
+                "default_res_model": self._name,
+                "default_res_id": self.id,
+            },
+        }
+
     @api.model_create_multi
     def create(self, vals_list):
+        if self._is_internal_manual_management_context():
+            raise AccessError(_("La creation manuelle d'une demande de paiement n'est pas autorisee."))
         for vals in vals_list:
             case = self.env["evm.case"].search([("id", "=", vals.get("case_id"))], limit=1)
             if self._is_portal_patient_context():
@@ -208,20 +335,23 @@ class EvmPaymentRequest(models.Model):
         return records
 
     def write(self, vals):
-        if set(vals) & self._workflow_only_write_fields and not self.env.context.get("evm_allow_payment_request_workflow_write"):
+        allow_workflow_write = self.env.context.get("evm_allow_payment_request_workflow_write")
+        if set(vals) & self._workflow_only_write_fields and not allow_workflow_write:
             raise AccessError(_("Le statut de la demande ne peut etre modifie que via une action metier."))
         if set(vals) & self._immutable_write_fields:
             raise AccessError(_("Le dossier et les metadonnees systeme de la demande ne peuvent pas etre modifies."))
         if "name" in vals:
             vals["name"] = self._sanitize_name(vals["name"])
         if self._is_portal_patient_context():
-            if set(vals) - self._patient_editable_fields:
+            if set(vals) - self._patient_editable_fields and not allow_workflow_write:
                 raise AccessError(_("Le patient ne peut modifier que les informations de saisie de sa demande."))
             if any(record.state != "draft" for record in self):
                 raise AccessError(_("Seule une demande en brouillon peut etre modifiee depuis le portail patient."))
         return super().write(vals)
 
     def unlink(self):
+        if self._is_internal_manual_management_context():
+            raise AccessError(_("La suppression manuelle d'une demande de paiement n'est pas autorisee."))
         if self._is_portal_patient_context() and any(record.state != "draft" for record in self):
             raise AccessError(_("Seule une demande en brouillon peut etre supprimee depuis le portail patient."))
         return super().unlink()

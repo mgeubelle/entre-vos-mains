@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="evm_payment_request_view_list" model="ir.ui.view">
+        <field name="name">evm.payment.request.list</field>
+        <field name="model">evm.payment_request</field>
+        <field name="arch" type="xml">
+            <list
+                string="Demandes de paiement"
+                create="false"
+                delete="false"
+                default_order="submitted_on desc, create_date desc"
+                decoration-info="state == 'submitted'"
+                decoration-success="state == 'validated'"
+                decoration-muted="state == 'closed'"
+                decoration-danger="state == 'refused'"
+            >
+                <field name="name"/>
+                <field name="state"/>
+                <field name="submitted_on"/>
+                <field name="case_id"/>
+                <field name="patient_user_id" string="Patient"/>
+                <field name="sessions_count"/>
+                <field name="amount_total"/>
+                <field name="currency_id" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="evm_payment_request_view_search" model="ir.ui.view">
+        <field name="name">evm.payment.request.search</field>
+        <field name="model">evm.payment_request</field>
+        <field name="arch" type="xml">
+            <search string="Recherche demandes de paiement">
+                <field name="name"/>
+                <field name="case_id"/>
+                <field name="patient_user_id"/>
+                <separator/>
+                <filter name="submitted" string="Soumises" domain="[('state', '=', 'submitted')]"/>
+                <filter name="to_complete" string="A completer" domain="[('state', '=', 'to_complete')]"/>
+                <filter name="validated" string="Validees" domain="[('state', '=', 'validated')]"/>
+                <filter name="paid" string="Payees" domain="[('state', '=', 'paid')]"/>
+                <filter name="refused" string="Refusees" domain="[('state', '=', 'refused')]"/>
+                <separator/>
+                <group name="group_by">
+                    <filter name="group_by_state" string="Statut" context="{'group_by': 'state'}"/>
+                    <filter name="group_by_case" string="Dossier" context="{'group_by': 'case_id'}"/>
+                    <filter name="group_by_patient" string="Patient" context="{'group_by': 'patient_user_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="evm_payment_request_view_form" model="ir.ui.view">
+        <field name="name">evm.payment.request.form</field>
+        <field name="model">evm.payment_request</field>
+        <field name="arch" type="xml">
+            <form string="Demande de paiement" create="false" delete="false">
+                <header>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,submitted,to_complete,validated,paid,refused,closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_attachments" type="object" class="oe_stat_button" icon="fa-paperclip">
+                            <field name="attachment_count" widget="statinfo" string="Justificatifs"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="case_id" readonly="1"/>
+                            <field name="patient_user_id" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="create_date" readonly="1"/>
+                            <field name="submitted_on" readonly="1"/>
+                            <field name="currency_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Demande">
+                        <field name="sessions_count" readonly="1"/>
+                        <field name="amount_total" readonly="1"/>
+                    </group>
+                    <group string="Justificatifs">
+                        <field name="attachment_ids" widget="many2many_binary" nolabel="1" readonly="1"/>
+                    </group>
+                </sheet>
+                <chatter reload_on_follower="True"/>
+            </form>
+        </field>
+    </record>
+
+    <record id="evm_payment_request_action" model="ir.actions.act_window">
+        <field name="name">Demandes de paiement</field>
+        <field name="res_model">evm.payment_request</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="evm_payment_request_view_search"/>
+        <field name="context">{'search_default_submitted': 1}</field>
+    </record>
+
+    <menuitem
+        id="evm_menu_payment_requests"
+        name="Demandes de paiement"
+        parent="evm_menu_root"
+        action="evm_payment_request_action"
+        sequence="20"
+        groups="evm.group_evm_fondation,evm.group_evm_admin"
+    />
+</odoo>
