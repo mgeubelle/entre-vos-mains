@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from odoo import http
+from odoo import _, http
 from odoo.addons.portal.controllers.portal import CustomerPortal
 from odoo.addons.portal.controllers.portal import pager as portal_pager
 from odoo.exceptions import AccessError, MissingError, ValidationError
@@ -9,6 +9,7 @@ from odoo.http import request
 
 class EvmCustomerPortal(CustomerPortal):
     _patient_payment_request_items_per_page = 20
+    _patient_document_items_per_page = 20
 
     def _get_kine_case_domain(self):
         return [("kine_user_id", "=", request.env.user.id)]
@@ -119,6 +120,61 @@ class EvmCustomerPortal(CustomerPortal):
             }
         )
         return values
+
+    def _get_attachment_type_label(self, attachment):
+        mimetype = attachment.mimetype or ""
+        if mimetype == "application/pdf":
+            return "PDF"
+        if mimetype in ("image/jpeg", "image/jpg"):
+            return _("Image JPEG")
+        if mimetype == "image/png":
+            return _("Image PNG")
+        if mimetype.startswith("image/"):
+            return _("Image")
+        return _("Fichier")
+
+    def _get_patient_case_document_entries(self, case_id, payment_requests, page=1, url_args=None):
+        if not payment_requests:
+            return [], False
+
+        payment_request_by_id = {payment_request.id: payment_request for payment_request in payment_requests}
+        attachment_model = request.env["ir.attachment"].sudo()
+        domain = [
+            ("res_model", "=", "evm.payment_request"),
+            ("res_id", "in", payment_requests.ids),
+            ("res_field", "=", False),
+            ("type", "=", "binary"),
+            ("evm_patient_visible", "=", True),
+        ]
+        attachment_count = attachment_model.search_count(domain)
+        pager = portal_pager(
+            url=f"/my/evm/cases/{case_id}",
+            total=attachment_count,
+            page=page,
+            step=self._patient_document_items_per_page,
+            url_args=url_args or {},
+        )
+        attachments = attachment_model.search(
+            domain,
+            order="create_date desc, id desc",
+            limit=self._patient_document_items_per_page,
+            offset=pager["offset"],
+        )
+        return [
+            {
+                "attachment": attachment,
+                "payment_request": payment_request_by_id[attachment.res_id],
+                "download_url": f"/web/content/{attachment.id}?download=true",
+                "download_label": _(
+                    "Telecharger %(attachment)s pour %(payment_request)s",
+                    attachment=attachment.name,
+                    payment_request=payment_request_by_id[attachment.res_id].name,
+                ),
+                "type_label": self._get_attachment_type_label(attachment),
+            }
+            for attachment in attachments
+            if attachment.res_id in payment_request_by_id
+        ], pager
 
     def _get_patient_case_or_redirect(self, case_id):
         if not self._is_patient_user():
@@ -232,6 +288,8 @@ class EvmCustomerPortal(CustomerPortal):
             payment_request_model = request.env["evm.payment_request"]
             payment_request_domain = [("case_id", "=", case_sudo.id)]
             payment_request_count = payment_request_model.search_count(payment_request_domain)
+            case_payment_requests = payment_request_model.search(payment_request_domain)
+            document_page = max(int(kwargs.get("document_page", 1) or 1), 1)
             page_size = min(self._items_per_page, self._patient_payment_request_items_per_page)
             pager = portal_pager(
                 url=f"/my/evm/cases/{case_sudo.id}",
@@ -246,11 +304,19 @@ class EvmCustomerPortal(CustomerPortal):
                 limit=page_size,
                 offset=pager["offset"],
             )
+            document_entries, document_pager = self._get_patient_case_document_entries(
+                case_sudo.id,
+                case_payment_requests,
+                page=document_page,
+                url_args={"document_page": document_page} if document_page > 1 else {},
+            )
             values = self._prepare_portal_layout_values()
             values.update(
                 {
                     "case": case_sudo,
                     "payment_requests": payment_requests,
+                    "document_entries": document_entries,
+                    "document_pager": document_pager,
                     "pager": pager,
                     "default_url": f"/my/evm/cases/{case_sudo.id}",
                     "page_name": "evm_patient_case",

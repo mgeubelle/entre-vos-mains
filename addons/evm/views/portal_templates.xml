@@ -328,6 +328,57 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="card border-0 shadow-sm mt-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                                <div>
+                                    <h3 class="h5 mb-1">Documents du dossier</h3>
+                                    <p class="text-muted mb-0">Historique documentaire agrégé de toutes les demandes de paiement de ce dossier.</p>
+                                </div>
+                            </div>
+
+                            <div t-if="not document_entries" class="alert alert-warning mb-0" role="alert">
+                                Aucun document partage n'est encore disponible pour ce dossier.
+                            </div>
+
+                            <div t-if="document_entries" class="d-flex flex-column gap-3">
+                                <div t-foreach="document_entries" t-as="document_entry" class="border rounded p-3 bg-white">
+                                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                        <div>
+                                            <div class="fw-semibold" t-esc="document_entry['attachment'].name"/>
+                                            <div class="small text-muted">
+                                                Ajoute le
+                                                <span t-field="document_entry['attachment'].create_date" t-options="{'widget': 'datetime'}"/>
+                                            </div>
+                                        </div>
+                                        <a
+                                            class="btn btn-sm btn-outline-primary"
+                                            t-att-aria-label="document_entry['download_label']"
+                                            t-att-href="document_entry['download_url']"
+                                        >
+                                            Telecharger
+                                        </a>
+                                    </div>
+                                    <div class="row g-3 mt-1">
+                                        <div class="col-sm-8">
+                                            <p class="text-muted mb-1">Demande de paiement</p>
+                                            <div class="fw-semibold" t-esc="document_entry['payment_request'].name"/>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <p class="text-muted mb-1">Type</p>
+                                            <div class="fw-semibold" t-esc="document_entry['type_label']"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div t-if="document_pager and document_pager.get('page_count', 0) &gt; 1" class="o_portal_pager d-flex justify-content-center my-3">
+                                <t t-call="portal.pager">
+                                    <t t-set="pager" t-value="document_pager"/>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </t>

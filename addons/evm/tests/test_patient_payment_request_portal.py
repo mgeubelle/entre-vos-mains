@@ -1,3 +1,4 @@
+import base64
 import html
 import re
 
@@ -60,7 +61,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "authorized_session_count": 0,
             }
         )
-        cls.env["evm.payment_request"].create(
+        cls.accepted_case_payment_requests = cls.env["evm.payment_request"].create(
             [
                 {
                     "name": "Demande brouillon portail",
@@ -84,6 +85,58 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                     "amount_total": 40.0,
                 },
             ]
+        )
+        cls.accepted_case_draft_request = cls.accepted_case_payment_requests[0]
+        cls.accepted_case_validated_request = cls.accepted_case_payment_requests[1]
+        cls.accepted_case_paid_request = cls.accepted_case_payment_requests[2]
+        cls.case_document_attachments = cls.env["ir.attachment"].create(
+            [
+                {
+                    "name": "facture-portail.pdf",
+                    "datas": base64.b64encode(b"pdf portail"),
+                    "mimetype": "application/pdf",
+                    "res_model": "evm.payment_request",
+                    "res_id": cls.accepted_case_validated_request.id,
+                    "evm_patient_visible": True,
+                },
+                {
+                    "name": "justificatif-portail.png",
+                    "datas": base64.b64encode(b"png portail"),
+                    "mimetype": "image/png",
+                    "res_model": "evm.payment_request",
+                    "res_id": cls.accepted_case_paid_request.id,
+                    "evm_patient_visible": True,
+                },
+            ]
+        )
+        cls.internal_case_attachment = cls.env["ir.attachment"].create(
+            {
+                "name": "note-interne.pdf",
+                "datas": base64.b64encode(b"pdf interne"),
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": cls.accepted_case_validated_request.id,
+                "evm_patient_visible": False,
+            }
+        )
+        cls.other_case_payment_request = cls.env["evm.payment_request"].create(
+            {
+                "name": "Demande autre patient portail",
+                "case_id": cls.other_case.id,
+                "sessions_count": 3,
+                "state": "submitted",
+                "amount_total": 90.0,
+            }
+        )
+        cls.other_case_attachment = cls.env["ir.attachment"].create(
+            {
+                "name": "facture-autre-patient.pdf",
+                "datas": base64.b64encode(b"pdf autre"),
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": cls.other_case_payment_request.id,
+                "evm_patient_visible": True,
+            }
         )
         cls.over_consumed_case = cls.env["evm.case"].create(
             {
@@ -126,6 +179,60 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn("Demande payee portail", detail_response.text)
         self.assertRegex(detail_response.text, r"160(?:[.,]00)")
         self.assertRegex(detail_response.text, r"40(?:[.,]00)")
+
+    def test_patient_portal_case_detail_shows_aggregated_document_space_for_own_case(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Documents du dossier", detail_response.text)
+        self.assertIn("Historique documentaire", detail_response.text)
+        self.assertIn("facture-portail.pdf", detail_response.text)
+        self.assertIn("justificatif-portail.png", detail_response.text)
+        self.assertIn("Demande validee portail", detail_response.text)
+        self.assertIn("Demande payee portail", detail_response.text)
+        self.assertIn(f'/web/content/{self.case_document_attachments[0].id}?download=true', detail_response.text)
+        self.assertIn(f'/web/content/{self.case_document_attachments[1].id}?download=true', detail_response.text)
+        self.assertNotIn("facture-autre-patient.pdf", detail_response.text)
+        self.assertNotIn("note-interne.pdf", detail_response.text)
+        self.assertIn('aria-label="Telecharger facture-portail.pdf pour Demande validee portail"', detail_response.text)
+        self.assertIn(">PDF<", detail_response.text)
+        self.assertIn(">Image PNG<", detail_response.text)
+
+    def test_patient_portal_document_download_refuses_unrelated_case_attachment(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        allowed_response = self.url_open(f"/web/content/{self.case_document_attachments[0].id}?download=true")
+        internal_response = self.url_open(f"/web/content/{self.internal_case_attachment.id}?download=true")
+        forbidden_response = self.url_open(f"/web/content/{self.other_case_attachment.id}?download=true")
+
+        self.assertEqual(allowed_response.status_code, 200)
+        self.assertEqual(internal_response.status_code, 404)
+        self.assertEqual(forbidden_response.status_code, 404)
+
+    def test_patient_portal_case_detail_paginates_documents_independently(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        for index in range(25):
+            self.env["ir.attachment"].create(
+                {
+                    "name": f"facture-pagination-{index:02d}.pdf",
+                    "datas": base64.b64encode(f"pdf-{index:02d}".encode()),
+                    "mimetype": "application/pdf",
+                    "res_model": "evm.payment_request",
+                    "res_id": self.accepted_case_validated_request.id,
+                    "evm_patient_visible": True,
+                }
+            )
+
+        first_page_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        second_page_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}?document_page=2")
+
+        self.assertEqual(first_page_response.status_code, 200)
+        self.assertEqual(second_page_response.status_code, 200)
+        self.assertIn("facture-pagination-24.pdf", first_page_response.text)
+        self.assertNotIn("facture-pagination-00.pdf", first_page_response.text)
+        self.assertIn("facture-pagination-00.pdf", second_page_response.text)
 
     def test_patient_portal_case_detail_shows_session_balance_from_validated_requests_only(self):
         self.authenticate(self.patient_login, self.patient_password)

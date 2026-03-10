@@ -1,6 +1,6 @@
 # Story 2.2: Permettre au patient de consulter l'espace documentaire de son dossier
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -22,10 +22,10 @@ so that je puisse retrouver les pieces deja partagees en toute securite.
 
 ## Tasks / Subtasks
 
-- [ ] Ajouter la vue documentaire agregee depuis le dossier patient
-- [ ] Lister les `ir.attachment` lies aux `evm.payment_request` du dossier
-- [ ] Securiser la consultation et le telechargement des pieces
-- [ ] Verifier l'historique documentaire et la non-exposition des pieces d'autres dossiers
+- [x] Ajouter la vue documentaire agregee depuis le dossier patient
+- [x] Lister les `ir.attachment` lies aux `evm.payment_request` du dossier
+- [x] Securiser la consultation et le telechargement des pieces
+- [x] Verifier l'historique documentaire et la non-exposition des pieces d'autres dossiers
 
 ## Dev Notes
 
@@ -52,4 +52,26 @@ GPT-5 Codex
 
 ### Completion Notes List
 
-- Story prete pour execution par `dev-story`
+- Vue "Documents du dossier" ajoutee au detail dossier patient avec historique agrege sur toutes les `evm.payment_request` autorisees du dossier.
+- Chargement serveur `sudo()` des `ir.attachment` binaires lies aux demandes du dossier, borne aux pieces explicitement visibles cote patient, avec pagination dediee et libelles de type lisibles.
+- Controle d'acces `ir.attachment` remplace par une surcharge ciblee: un patient ne peut lire que les pieces `evm.payment_request` autorisees et marquees visibles pour le portail.
+- Rendu portail durci pour masquer les pieces internes, exposer des libelles accessibles sur les liens de telechargement, et conserver un historique documentaire pagine.
+- Tests portail HTTP ajoutes pour verifier le listing agrege, l'exclusion des pieces internes, la pagination documentaire et le refus `404` sur une piece d'un autre dossier.
+- Tests securite ORM ajoutes pour verrouiller l'acces aux pieces via les droits du `evm.payment_request` rattache et la visibilite portail de l'attachement.
+
+## File List
+
+- addons/evm/controllers/portal.py
+- addons/evm/models/__init__.py
+- addons/evm/models/ir_attachment.py
+- addons/evm/security/ir.model.access.csv
+- addons/evm/tests/test_patient_payment_request_portal.py
+- addons/evm/tests/test_security.py
+- addons/evm/views/portal_templates.xml
+- _bmad-output/implementation-artifacts/2-2-permettre-au-patient-de-consulter-l-espace-documentaire-de-son-dossier.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-10: ajout de l'espace documentaire agrege du dossier patient, securisation de l'acces `ir.attachment` et couverture de tests portail/securite.
+- 2026-03-10: correction de review sur la portee de lecture `ir.attachment`, la pagination documentaire et l'accessibilite des actions de telechargement.

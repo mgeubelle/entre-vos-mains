@@ -155,6 +155,52 @@ class TestEvmSecurity(TransactionCase):
             2,
         )
 
+    def test_attachment_access_follows_related_payment_request_rules(self):
+        fixture = self._create_security_fixture()
+        own_attachment = self.env["ir.attachment"].create(
+            {
+                "name": "piece-patient-a.pdf",
+                "raw": b"pdf-a",
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": fixture["payment_request_1"].id,
+                "evm_patient_visible": True,
+            }
+        )
+        internal_attachment = self.env["ir.attachment"].create(
+            {
+                "name": "piece-interne-a.pdf",
+                "raw": b"pdf-internal",
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": fixture["payment_request_1"].id,
+                "evm_patient_visible": False,
+            }
+        )
+        other_attachment = self.env["ir.attachment"].create(
+            {
+                "name": "piece-patient-b.pdf",
+                "raw": b"pdf-b",
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": fixture["payment_request_2"].id,
+                "evm_patient_visible": True,
+            }
+        )
+
+        patient_attachment_model = self.env["ir.attachment"].with_user(fixture["patient_user"])
+        self.assertEqual(patient_attachment_model.search([("id", "=", own_attachment.id)]), own_attachment)
+        self.assertFalse(patient_attachment_model.search([("id", "=", internal_attachment.id)]))
+        self.assertFalse(patient_attachment_model.search([("id", "=", other_attachment.id)]))
+        self.assertEqual(
+            own_attachment.with_user(fixture["patient_user"]).name,
+            "piece-patient-a.pdf",
+        )
+        with self.assertRaises(AccessError):
+            internal_attachment.with_user(fixture["patient_user"]).check_access("read")
+        with self.assertRaises(AccessError):
+            other_attachment.with_user(fixture["patient_user"]).check_access("read")
+
     def test_portal_users_cannot_bypass_acl_or_record_rules(self):
         fixture = self._create_security_fixture()
 
