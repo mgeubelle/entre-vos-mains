@@ -48,6 +48,16 @@ class EvmCase(models.Model):
         string="Seances autorisees",
         tracking=True,
     )
+    sessions_consumed = fields.Integer(
+        string="Seances consommees",
+        compute="_compute_session_balance",
+        compute_sudo=True,
+    )
+    remaining_session_count = fields.Integer(
+        string="Seances restantes",
+        compute="_compute_session_balance",
+        compute_sudo=True,
+    )
     foundation_decision_note = fields.Text(
         string="Note de decision",
         tracking=True,
@@ -128,6 +138,18 @@ class EvmCase(models.Model):
             record.annual_session_cap = annual_cap
             record.annual_session_cap_used = used
             record.annual_session_cap_remaining = max(annual_cap - used, 0) if annual_cap else 0
+
+    @api.depends("authorized_session_count", "payment_request_ids.state", "payment_request_ids.sessions_count")
+    def _compute_session_balance(self):
+        for record in self:
+            authorized = max(record.authorized_session_count or 0, 0)
+            consumed = sum(
+                record.payment_request_ids.filtered(lambda payment_request: payment_request.state in ("validated", "paid")).mapped(
+                    "sessions_count"
+                )
+            )
+            record.sessions_consumed = consumed
+            record.remaining_session_count = authorized - consumed
 
     @api.constrains("requested_session_count", "authorized_session_count")
     def _check_session_counts_consistency(self):

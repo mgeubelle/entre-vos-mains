@@ -50,6 +50,60 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "authorized_session_count": 10,
             }
         )
+        cls.pending_case = cls.env["evm.case"].create(
+            {
+                "name": "Dossier patient en attente",
+                "kine_user_id": cls.kine_user.id,
+                "patient_user_id": cls.patient_user.id,
+                "state": "pending",
+                "requested_session_count": 8,
+                "authorized_session_count": 0,
+            }
+        )
+        cls.env["evm.payment_request"].create(
+            [
+                {
+                    "name": "Demande brouillon portail",
+                    "case_id": cls.accepted_case.id,
+                    "sessions_count": 2,
+                    "state": "draft",
+                    "amount_total": 80.0,
+                },
+                {
+                    "name": "Demande validee portail",
+                    "case_id": cls.accepted_case.id,
+                    "sessions_count": 4,
+                    "state": "validated",
+                    "amount_total": 160.0,
+                },
+                {
+                    "name": "Demande payee portail",
+                    "case_id": cls.accepted_case.id,
+                    "sessions_count": 1,
+                    "state": "paid",
+                    "amount_total": 40.0,
+                },
+            ]
+        )
+        cls.over_consumed_case = cls.env["evm.case"].create(
+            {
+                "name": "Dossier patient depassement",
+                "kine_user_id": cls.kine_user.id,
+                "patient_user_id": cls.patient_user.id,
+                "state": "accepted",
+                "requested_session_count": 12,
+                "authorized_session_count": 3,
+            }
+        )
+        cls.env["evm.payment_request"].create(
+            {
+                "name": "Demande depassement portail",
+                "case_id": cls.over_consumed_case.id,
+                "sessions_count": 5,
+                "state": "validated",
+                "amount_total": 200.0,
+            }
+        )
 
     def test_patient_portal_pages_show_case_access_and_payment_request_entrypoints(self):
         self.authenticate(self.patient_login, self.patient_password)
@@ -66,6 +120,34 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertIn("Demandes de paiement", detail_response.text)
         self.assertIn("Nouvelle demande de paiement", detail_response.text)
+        self.assertIn("Seances consommees", detail_response.text)
+        self.assertIn("Seances restantes", detail_response.text)
+        self.assertIn("Demande validee portail", detail_response.text)
+        self.assertIn("Demande payee portail", detail_response.text)
+        self.assertRegex(detail_response.text, r"160(?:[.,]00)")
+        self.assertRegex(detail_response.text, r"40(?:[.,]00)")
+
+    def test_patient_portal_case_detail_shows_session_balance_from_validated_requests_only(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Seances autorisees", detail_response.text)
+        self.assertIn("Seances consommees", detail_response.text)
+        self.assertIn("Seances restantes", detail_response.text)
+        self.assertRegex(detail_response.text, r">\s*12\s*<")
+        self.assertRegex(detail_response.text, r">\s*5\s*<")
+        self.assertRegex(detail_response.text, r">\s*7\s*<")
+
+    def test_patient_portal_case_detail_surfaces_quota_overrun_without_hiding_it(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.over_consumed_case.id}")
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("depassent actuellement le quota autorise", detail_response.text)
+        self.assertRegex(detail_response.text, r">\s*-2\s*<")
 
     def test_patient_portal_payment_request_form_creates_a_draft_request_once_per_submission_token(self):
         self.authenticate(self.patient_login, self.patient_password)
@@ -100,6 +182,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 ("case_id", "=", self.accepted_case.id),
                 ("patient_user_id", "=", self.patient_user.id),
                 ("sessions_count", "=", 4),
+                ("amount_total", "=", 123.45),
             ]
         )
         self.assertEqual(len(payment_request), 1)
@@ -123,6 +206,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                     ("case_id", "=", self.accepted_case.id),
                     ("patient_user_id", "=", self.patient_user.id),
                     ("sessions_count", "=", 4),
+                    ("amount_total", "=", 123.45),
                 ]
             ),
             1,
@@ -160,6 +244,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 [
                     ("case_id", "=", self.accepted_case.id),
                     ("patient_user_id", "=", self.patient_user.id),
+                    ("sessions_count", "=", 0),
                 ]
             )
         )
@@ -174,6 +259,38 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertTrue(response.headers["Location"].endswith("/my"))
+
+    def test_patient_portal_case_detail_rejects_unrelated_or_non_accepted_cases(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        other_case_response = self.url_open(f"/my/evm/cases/{self.other_case.id}", allow_redirects=False)
+        pending_case_response = self.url_open(f"/my/evm/cases/{self.pending_case.id}", allow_redirects=False)
+
+        self.assertEqual(other_case_response.status_code, 303)
+        self.assertTrue(other_case_response.headers["Location"].endswith("/my/evm/cases"))
+        self.assertEqual(pending_case_response.status_code, 303)
+        self.assertTrue(pending_case_response.headers["Location"].endswith("/my/evm/cases"))
+
+    def test_patient_portal_case_detail_paginates_payment_requests(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        for index in range(35):
+            self.env["evm.payment_request"].create(
+                {
+                    "name": f"Demande pagination {index:02d}",
+                    "case_id": self.accepted_case.id,
+                    "sessions_count": 1,
+                    "state": "draft",
+                }
+            )
+
+        first_page_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        second_page_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/page/2")
+
+        self.assertEqual(first_page_response.status_code, 200)
+        self.assertEqual(second_page_response.status_code, 200)
+        self.assertIn("Demande pagination 24", first_page_response.text)
+        self.assertNotIn("Demande pagination 00", first_page_response.text)
+        self.assertIn("Demande pagination 00", second_page_response.text)
 
     @staticmethod
     def _extract_csrf_token(page_html):

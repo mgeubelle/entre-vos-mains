@@ -8,6 +8,8 @@ from odoo.http import request
 
 
 class EvmCustomerPortal(CustomerPortal):
+    _patient_payment_request_items_per_page = 20
+
     def _get_kine_case_domain(self):
         return [("kine_user_id", "=", request.env.user.id)]
 
@@ -122,9 +124,12 @@ class EvmCustomerPortal(CustomerPortal):
         if not self._is_patient_user():
             return None
         try:
-            return self._document_check_access("evm.case", case_id)
+            case_sudo = self._document_check_access("evm.case", case_id)
         except (AccessError, MissingError):
             return None
+        if case_sudo.patient_user_id != request.env.user or case_sudo.state != "accepted":
+            return None
+        return case_sudo
 
     def _get_portal_case_or_redirect(self, case_id):
         if not request.env["evm.case"].has_access("read"):
@@ -205,22 +210,49 @@ class EvmCustomerPortal(CustomerPortal):
             return request.render("evm.evm_portal_my_case_create", self._prepare_case_creation_values(form_values, errors))
         return request.redirect(f"/my/evm/cases/{case.id}")
 
-    @http.route("/my/evm/cases/<int:case_id>", type="http", auth="user", website=True)
-    def portal_my_case(self, case_id, **kwargs):
+    @http.route(
+        ["/my/evm/cases/<int:case_id>", "/my/evm/cases/<int:case_id>/page/<int:page>"],
+        type="http",
+        auth="user",
+        website=True,
+    )
+    def portal_my_case(self, case_id, page=1, **kwargs):
         if not self._is_kine_user() and not self._is_patient_user():
             return request.redirect("/my")
 
-        case_sudo = self._get_portal_case_or_redirect(case_id)
+        case_sudo = (
+            self._get_patient_case_or_redirect(case_id)
+            if self._is_patient_user()
+            else self._get_portal_case_or_redirect(case_id)
+        )
         if not case_sudo:
             return request.redirect("/my/evm/cases")
 
         if self._is_patient_user():
-            payment_requests = request.env["evm.payment_request"].search([("case_id", "=", case_sudo.id)])
+            payment_request_model = request.env["evm.payment_request"]
+            payment_request_domain = [("case_id", "=", case_sudo.id)]
+            payment_request_count = payment_request_model.search_count(payment_request_domain)
+            page_size = min(self._items_per_page, self._patient_payment_request_items_per_page)
+            pager = portal_pager(
+                url=f"/my/evm/cases/{case_sudo.id}",
+                total=payment_request_count,
+                page=page,
+                step=page_size,
+                url_args=kwargs,
+            )
+            payment_requests = request.env["evm.payment_request"].search(
+                payment_request_domain,
+                order="create_date desc, id desc",
+                limit=page_size,
+                offset=pager["offset"],
+            )
             values = self._prepare_portal_layout_values()
             values.update(
                 {
                     "case": case_sudo,
                     "payment_requests": payment_requests,
+                    "pager": pager,
+                    "default_url": f"/my/evm/cases/{case_sudo.id}",
                     "page_name": "evm_patient_case",
                 }
             )

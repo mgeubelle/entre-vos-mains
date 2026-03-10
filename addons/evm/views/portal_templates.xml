@@ -225,9 +225,56 @@
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <p class="text-muted mb-1">Seances autorisees</p>
-                                    <div class="fw-semibold" t-esc="case.authorized_session_count"/>
+                                    <p class="text-muted mb-1">Date d'introduction</p>
+                                    <div class="fw-semibold">
+                                        <span t-field="case.create_date" t-options="{'widget': 'date'}"/>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3 mt-1">
+                                <div class="col">
+                                    <div class="rounded border bg-light p-3 h-100">
+                                        <p class="text-muted mb-1">Seances demandees</p>
+                                        <div class="fw-semibold" t-esc="case.requested_session_count"/>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="rounded border bg-light p-3 h-100">
+                                        <p class="text-muted mb-1">Seances autorisees</p>
+                                        <div class="fw-semibold" t-esc="case.authorized_session_count"/>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="rounded border bg-light p-3 h-100">
+                                        <p class="text-muted mb-1">Seances consommees</p>
+                                        <div class="fw-semibold" t-esc="case.sessions_consumed"/>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="rounded border bg-light p-3 h-100">
+                                        <p class="text-muted mb-1">Seances restantes</p>
+                                        <div
+                                            t-attf-class="fw-semibold #{'text-danger' if case.remaining_session_count &lt; 0 else ''}"
+                                            t-esc="case.remaining_session_count"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div t-if="case.remaining_session_count &lt; 0" class="alert alert-warning mt-3 mb-0" role="alert">
+                                Les seances remboursees depassent actuellement le quota autorise de
+                                <span class="fw-semibold" t-esc="abs(case.remaining_session_count)"/>
+                                seance(s). Contactez la fondation si cette situation persiste.
+                            </div>
+
+                            <div class="mt-3">
+                                <p class="text-muted mb-1">Prochaine action</p>
+                                <p class="mb-0">
+                                    Utilisez le bouton
+                                    <span class="fw-semibold">Nouvelle demande de paiement</span>
+                                    lorsque vous souhaitez transmettre un remboursement.
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -237,7 +284,7 @@
                             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
                                 <div>
                                     <h3 class="h5 mb-1">Demandes de paiement</h3>
-                                    <p class="text-muted mb-0">Retrouvez l'etat et les seances declarees pour chaque demande.</p>
+                                    <p class="text-muted mb-0">Retrouvez la date d'introduction, le statut et les seances declarees pour chaque demande.</p>
                                 </div>
                             </div>
 
@@ -245,36 +292,40 @@
                                 Aucune demande de paiement n'a encore ete creee pour ce dossier.
                             </div>
 
-                            <t t-if="payment_requests" t-call="portal.portal_table">
-                                <thead>
-                                    <tr>
-                                        <th>Demande</th>
-                                        <th>Statut</th>
-                                        <th>Seances</th>
-                                        <th class="text-end">Montant</th>
-                                    </tr>
-                                </thead>
-                                <t t-foreach="payment_requests" t-as="payment_request">
-                                    <tr>
-                                        <td>
+                            <div t-if="payment_requests" class="d-flex flex-column gap-3">
+                                <div t-foreach="payment_requests" t-as="payment_request" class="border rounded p-3 bg-white">
+                                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                        <div>
                                             <div class="fw-semibold" t-esc="payment_request.name"/>
                                             <div class="small text-muted">
+                                                Introduite le
                                                 <span t-field="payment_request.create_date" t-options="{'widget': 'date'}"/>
                                             </div>
-                                        </td>
-                                        <td>
+                                        </div>
+                                        <span class="badge text-bg-light border">
                                             <span t-field="payment_request.state"/>
-                                        </td>
-                                        <td t-esc="payment_request.sessions_count"/>
-                                        <td class="text-end">
-                                            <t t-if="payment_request.amount_total is not False">
-                                                <span t-field="payment_request.amount_total"/>
-                                            </t>
-                                            <t t-else="">Non renseigne</t>
-                                        </td>
-                                    </tr>
-                                </t>
-                            </t>
+                                        </span>
+                                    </div>
+                                    <div class="row g-3 mt-1">
+                                        <div class="col-sm-6">
+                                            <p class="text-muted mb-1">Seances declarees</p>
+                                            <div class="fw-semibold" t-esc="payment_request.sessions_count"/>
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <p class="text-muted mb-1">Montant</p>
+                                            <div class="fw-semibold">
+                                                <t t-if="payment_request.amount_total is not False">
+                                                    <span t-field="payment_request.amount_total"/>
+                                                </t>
+                                                <t t-else="">Non renseigne</t>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div t-if="pager and pager.get('page_count', 0) &gt; 1" class="o_portal_pager d-flex justify-content-center my-3">
+                                <t t-call="portal.pager"/>
+                            </div>
                         </div>
                     </div>
                 </div>
