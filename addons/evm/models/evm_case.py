@@ -94,6 +94,11 @@ class EvmCase(models.Model):
         string="Adresse e-mail du patient",
         tracking=True,
     )
+    payment_request_ids = fields.One2many(
+        "evm.payment_request",
+        "case_id",
+        string="Demandes de paiement",
+    )
 
     _workflow_only_write_fields = {"state", "patient_user_id", "patient_partner_id"}
     _kine_protected_write_fields = {"authorized_session_count", "kine_user_id", "patient_user_id", "patient_partner_id"}

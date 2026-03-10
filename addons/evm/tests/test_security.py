@@ -97,18 +97,21 @@ class TestEvmSecurity(TransactionCase):
             {
                 "name": "Demande A",
                 "case_id": case_1.id,
+                "sessions_count": 3,
             }
         )
         payment_request_2 = self.env["evm.payment_request"].create(
             {
                 "name": "Demande B",
                 "case_id": case_2.id,
+                "sessions_count": 2,
             }
         )
         payment_request_pending = self.env["evm.payment_request"].create(
             {
                 "name": "Demande en attente",
                 "case_id": case_pending_same_patient.id,
+                "sessions_count": 1,
             }
         )
 
@@ -214,6 +217,7 @@ class TestEvmSecurity(TransactionCase):
             {
                 "name": "Demande patient",
                 "case_id": fixture["case_1"].id,
+                "sessions_count": 4,
             }
         )
         own_payment_request.with_user(fixture["patient_user"]).write({"name": "Demande patient maj"})
@@ -221,6 +225,7 @@ class TestEvmSecurity(TransactionCase):
             {
                 "name": "Demande supprimable",
                 "case_id": fixture["case_1"].id,
+                "sessions_count": 5,
             }
         )
         deletable_payment_request.with_user(fixture["patient_user"]).unlink()
@@ -234,6 +239,37 @@ class TestEvmSecurity(TransactionCase):
         )
         fondation_case.with_user(fixture["fondation_user"]).write({"name": "Dossier fondation maj"})
         self.assertEqual(fondation_case.name, "Dossier fondation maj")
+
+    def test_patient_payment_request_mutations_are_limited_to_draft_payload_fields(self):
+        fixture = self._create_security_fixture()
+
+        second_accepted_case = self.env["evm.case"].create(
+            {
+                "name": "Dossier C",
+                "kine_user_id": fixture["other_kine_user"].id,
+                "patient_user_id": fixture["patient_user"].id,
+                "state": "accepted",
+            }
+        )
+        payment_request = self.env["evm.payment_request"].with_user(fixture["patient_user"]).create(
+            {
+                "case_id": fixture["case_1"].id,
+                "sessions_count": 2,
+            }
+        )
+
+        payment_request.with_user(fixture["patient_user"]).write({"name": "Demande brouillon modifiee"})
+        self.assertEqual(payment_request.name, "Demande brouillon modifiee")
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(fixture["patient_user"]).write({"case_id": second_accepted_case.id})
+
+        payment_request.sudo().with_context(evm_allow_payment_request_workflow_write=True).write({"state": "submitted"})
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(fixture["patient_user"]).write({"name": "Demande soumise pirate"})
+        with self.assertRaises(AccessError):
+            payment_request.with_user(fixture["patient_user"]).unlink()
 
     def test_kine_cannot_bypass_case_workflow_or_rewrite_submitted_case(self):
         fixture = self._create_security_fixture()

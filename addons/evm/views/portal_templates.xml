@@ -3,17 +3,23 @@
     <template id="evm_portal_breadcrumbs" inherit_id="portal.portal_breadcrumbs" priority="30">
         <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
             <li
-                t-if="page_name == 'evm_cases' or page_name == 'evm_case' or page_name == 'evm_case_create'"
-                t-attf-class="breadcrumb-item #{'active' if page_name == 'evm_cases' else ''}"
+                t-if="page_name == 'evm_cases' or page_name == 'evm_case' or page_name == 'evm_case_create' or page_name == 'evm_patient_cases' or page_name == 'evm_patient_case' or page_name == 'evm_payment_request_create'"
+                t-attf-class="breadcrumb-item #{'active' if page_name == 'evm_cases' or page_name == 'evm_patient_cases' else ''}"
             >
-                <a t-if="page_name == 'evm_case' or page_name == 'evm_case_create'" t-attf-href="/my/evm/cases?{{ keep_query() }}">Mes dossiers</a>
+                <a t-if="page_name != 'evm_cases' and page_name != 'evm_patient_cases'" t-attf-href="/my/evm/cases?{{ keep_query() }}">Mes dossiers</a>
                 <t t-else="">Mes dossiers</t>
             </li>
             <li t-if="page_name == 'evm_case'" class="breadcrumb-item active">
                 <t t-esc="case.name"/>
             </li>
+            <li t-if="page_name == 'evm_patient_case'" class="breadcrumb-item active">
+                <t t-esc="case.name"/>
+            </li>
             <li t-if="page_name == 'evm_case_create'" class="breadcrumb-item active">
                 Creer un dossier
+            </li>
+            <li t-if="page_name == 'evm_payment_request_create'" class="breadcrumb-item active">
+                <t t-esc="case.name"/>
             </li>
         </xpath>
     </template>
@@ -24,6 +30,13 @@
                 <t t-set="icon" t-value="'/portal/static/src/img/portal-connection.svg'"/>
                 <t t-set="title">Mes dossiers</t>
                 <t t-set="text">Suivre les dossiers que vous avez introduits.</t>
+                <t t-set="url" t-value="'/my/evm/cases'"/>
+                <t t-set="placeholder_count" t-value="'evm_case_count'"/>
+            </t>
+            <t t-if="request.env.user.has_group('evm.group_evm_patient')" t-call="portal.portal_docs_entry">
+                <t t-set="icon" t-value="'/portal/static/src/img/portal-connection.svg'"/>
+                <t t-set="title">Mes dossiers</t>
+                <t t-set="text">Consulter votre dossier accepte et vos demandes de paiement.</t>
                 <t t-set="url" t-value="'/my/evm/cases'"/>
                 <t t-set="placeholder_count" t-value="'evm_case_count'"/>
             </t>
@@ -147,6 +160,128 @@
         </t>
     </template>
 
+    <template id="evm_portal_my_patient_cases" name="Mes dossiers patient">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Mes dossiers</t>
+            </t>
+
+            <div t-if="not cases" class="alert alert-warning" role="alert">
+                Aucun dossier accepte n'est encore disponible pour votre compte.
+            </div>
+
+            <t t-if="cases" t-call="portal.portal_table">
+                <thead>
+                    <tr>
+                        <th>Dossier</th>
+                        <th>Statut</th>
+                        <th class="text-end">Creation</th>
+                    </tr>
+                </thead>
+                <t t-foreach="cases" t-as="case">
+                    <tr>
+                        <td>
+                            <a t-att-href="'/my/evm/cases/%s' % case.id">
+                                <span t-field="case.name"/>
+                            </a>
+                        </td>
+                        <td>
+                            <span t-field="case.state"/>
+                        </td>
+                        <td class="text-end">
+                            <span t-field="case.create_date" t-options="{'widget': 'date'}"/>
+                        </td>
+                    </tr>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <template id="evm_portal_my_patient_case" name="Detail dossier patient">
+        <t t-call="portal.portal_layout">
+            <div class="row g-3">
+                <div class="col-12 col-xl-8">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                <div>
+                                    <p class="text-muted mb-1">Dossier accepte</p>
+                                    <h2 class="h4 mb-0">
+                                        <span t-field="case.name"/>
+                                    </h2>
+                                </div>
+                                <a t-att-href="'/my/evm/cases/%s/payment-requests/new' % case.id" class="btn btn-primary">
+                                    Nouvelle demande de paiement
+                                </a>
+                            </div>
+
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Statut du dossier</p>
+                                    <div class="fw-semibold">
+                                        <span t-field="case.state"/>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Seances autorisees</p>
+                                    <div class="fw-semibold" t-esc="case.authorized_session_count"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mt-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                                <div>
+                                    <h3 class="h5 mb-1">Demandes de paiement</h3>
+                                    <p class="text-muted mb-0">Retrouvez l'etat et les seances declarees pour chaque demande.</p>
+                                </div>
+                            </div>
+
+                            <div t-if="not payment_requests" class="alert alert-warning mb-0" role="alert">
+                                Aucune demande de paiement n'a encore ete creee pour ce dossier.
+                            </div>
+
+                            <t t-if="payment_requests" t-call="portal.portal_table">
+                                <thead>
+                                    <tr>
+                                        <th>Demande</th>
+                                        <th>Statut</th>
+                                        <th>Seances</th>
+                                        <th class="text-end">Montant</th>
+                                    </tr>
+                                </thead>
+                                <t t-foreach="payment_requests" t-as="payment_request">
+                                    <tr>
+                                        <td>
+                                            <div class="fw-semibold" t-esc="payment_request.name"/>
+                                            <div class="small text-muted">
+                                                <span t-field="payment_request.create_date" t-options="{'widget': 'date'}"/>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span t-field="payment_request.state"/>
+                                        </td>
+                                        <td t-esc="payment_request.sessions_count"/>
+                                        <td class="text-end">
+                                            <t t-if="payment_request.amount_total is not False">
+                                                <span t-field="payment_request.amount_total"/>
+                                            </t>
+                                            <t t-else="">Non renseigne</t>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </t>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
     <template id="evm_portal_my_case_create" name="Creation dossier kine">
         <t t-call="portal.portal_layout">
             <div class="row justify-content-center">
@@ -224,6 +359,95 @@
                                 <div class="col-12 d-flex justify-content-end gap-2 pt-2">
                                     <a href="/my/evm/cases" class="btn btn-outline-secondary">Annuler</a>
                                     <button type="submit" class="btn btn-primary">Soumettre le dossier</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="evm_portal_my_payment_request_create" name="Creation demande paiement patient">
+        <t t-call="portal.portal_layout">
+            <div class="row justify-content-center">
+                <div class="col-12 col-xl-8">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+                                <div>
+                                    <p class="text-muted mb-1">Dossier accepte</p>
+                                    <h2 class="h4 mb-0">Nouvelle demande de paiement</h2>
+                                </div>
+                                <a t-att-href="'/my/evm/cases/%s' % case.id" class="btn btn-outline-secondary">
+                                    Retour au dossier
+                                </a>
+                            </div>
+
+                            <div t-if="created_request" class="alert alert-success" role="alert">
+                                La demande de paiement a ete creee en brouillon.
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Seances autorisees</p>
+                                    <div class="fw-semibold" t-esc="case.authorized_session_count"/>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="text-muted mb-1">Statut du dossier</p>
+                                    <div class="fw-semibold">
+                                        <span t-field="case.state"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div t-if="page_error" class="alert alert-danger" role="alert">
+                                <p class="mb-2" t-esc="page_error"/>
+                                <p t-if="errors.get('form')" class="mb-0" t-esc="errors.get('form')"/>
+                            </div>
+
+                            <form t-att-action="'/my/evm/cases/%s/payment-requests/create' % case.id" method="post" class="row g-3">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="submission_token" t-att-value="submission_token"/>
+
+                                <div class="col-12">
+                                    <label for="sessions_count" class="form-label">Nombre de seances concernees</label>
+                                    <input
+                                        id="sessions_count"
+                                        type="number"
+                                        name="sessions_count"
+                                        min="1"
+                                        step="1"
+                                        inputmode="numeric"
+                                        required="required"
+                                        t-attf-class="form-control #{'is-invalid' if errors.get('sessions_count') else ''}"
+                                        t-att-value="form_values.get('sessions_count', '')"
+                                    />
+                                    <div t-if="errors.get('sessions_count')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('sessions_count')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="amount_total" class="form-label">Montant total a payer</label>
+                                    <input
+                                        id="amount_total"
+                                        type="number"
+                                        name="amount_total"
+                                        min="0"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                        t-attf-class="form-control #{'is-invalid' if errors.get('amount_total') else ''}"
+                                        t-att-value="form_values.get('amount_total', '')"
+                                    />
+                                    <div class="form-text">Champ facultatif en V1.</div>
+                                    <div t-if="errors.get('amount_total')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('amount_total')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12 d-flex justify-content-end pt-2">
+                                    <button type="submit" class="btn btn-primary">Creer la demande</button>
                                 </div>
                             </form>
                         </div>

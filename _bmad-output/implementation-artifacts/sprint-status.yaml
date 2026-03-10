@@ -51,7 +51,7 @@ development_status:
   epic-1-retrospective: optional
 
   epic-2: in-progress
-  2-3-permettre-au-patient-de-creer-une-demande-de-paiement: ready-for-dev
+  2-3-permettre-au-patient-de-creer-une-demande-de-paiement: review
   2-1-permettre-au-patient-de-consulter-son-dossier-accepte-dans-le-portail: ready-for-dev
   2-2-permettre-au-patient-de-consulter-l-espace-documentaire-de-son-dossier: ready-for-dev
   2-4-permettre-au-patient-de-deposer-des-factures-et-justificatifs-sur-une-demande: ready-for-dev
