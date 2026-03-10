@@ -8,6 +8,7 @@ class EvmCase(models.Model):
     _inherit = ["mail.thread"]
     _description = "EVM Case"
     _order = "create_date desc, id desc"
+    _session_balance_counted_states = ("validated", "paid", "closed")
 
     name = fields.Char(required=True, string="Nom")
     state = fields.Selection(
@@ -144,12 +145,12 @@ class EvmCase(models.Model):
         for record in self:
             authorized = max(record.authorized_session_count or 0, 0)
             consumed = sum(
-                record.payment_request_ids.filtered(lambda payment_request: payment_request.state in ("validated", "paid")).mapped(
-                    "sessions_count"
-                )
+                record.payment_request_ids.filtered(
+                    lambda payment_request: payment_request.state in self._session_balance_counted_states
+                ).mapped("sessions_count")
             )
             record.sessions_consumed = consumed
-            record.remaining_session_count = authorized - consumed
+            record.remaining_session_count = max(authorized - consumed, 0)
 
     @api.constrains("requested_session_count", "authorized_session_count")
     def _check_session_counts_consistency(self):

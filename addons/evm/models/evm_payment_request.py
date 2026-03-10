@@ -28,6 +28,21 @@ class EvmPaymentRequest(models.Model):
         store=True,
         string="Patient",
     )
+    case_authorized_session_count = fields.Integer(
+        related="case_id.authorized_session_count",
+        string="Seances autorisees dossier",
+        readonly=True,
+    )
+    case_sessions_consumed = fields.Integer(
+        related="case_id.sessions_consumed",
+        string="Seances consommees dossier",
+        readonly=True,
+    )
+    case_remaining_session_count = fields.Integer(
+        related="case_id.remaining_session_count",
+        string="Seances restantes dossier",
+        readonly=True,
+    )
     state = fields.Selection(
         selection=[
             ("draft", "Brouillon"),
@@ -90,7 +105,9 @@ class EvmPaymentRequest(models.Model):
     _workflow_only_write_fields = {"state", "submitted_on"}
     _immutable_write_fields = {"case_id", "patient_user_id", "currency_id"}
     _patient_editable_fields = {"name", "sessions_count", "amount_total"}
+    _foundation_validation_editable_fields = {"sessions_count", "amount_total"}
     _final_state_locked_write_fields = {"name", "sessions_count", "amount_total"}
+    _session_balance_counted_states = {"validated", "paid", "closed"}
     _portal_allowed_attachment_extensions = {
         "pdf": "application/pdf",
         "jpg": "image/jpeg",
@@ -133,6 +150,38 @@ class EvmPaymentRequest(models.Model):
             raise ValidationError(_("Veuillez renseigner un motif de refus exploitable."))
         return sanitized_reason
 
+    def _get_consumed_sessions_excluding_self(self):
+        self.ensure_one()
+        return sum(
+            self.case_id.payment_request_ids.filtered(
+                lambda payment_request: payment_request.id != self.id
+                and payment_request.state in self._session_balance_counted_states
+            ).mapped("sessions_count")
+        )
+
+    def _check_authorized_session_quota(self):
+        tracked_records = self.filtered(
+            lambda record: record.case_id and record.state in self._session_balance_counted_states
+        )
+        for record in tracked_records:
+            if record.case_id.state != "accepted":
+                raise ValidationError(
+                    _("Seule une demande rattachee a un dossier accepte peut consommer des seances.")
+                )
+
+            authorized = max(record.case_id.authorized_session_count or 0, 0)
+            consumed_without_record = record._get_consumed_sessions_excluding_self()
+            remaining = max(authorized - consumed_without_record, 0)
+            if record.sessions_count > remaining:
+                raise ValidationError(
+                    _(
+                        "La validation depasse les seances autorisees du dossier. "
+                        "Il reste %(remaining)s seance(s) validables sur %(authorized)s.",
+                        remaining=remaining,
+                        authorized=authorized,
+                    )
+                )
+
     def _get_attachment_domain(self):
         self.ensure_one()
         return [
@@ -171,6 +220,10 @@ class EvmPaymentRequest(models.Model):
                 raise ValidationError(_("Veuillez renseigner un nombre de seances strictement positif."))
             if record.amount_total is not False and record.amount_total < 0:
                 raise ValidationError(_("Veuillez renseigner un montant positif ou nul."))
+
+    @api.constrains("state", "sessions_count", "case_id")
+    def _check_validated_session_quota(self):
+        self._check_authorized_session_quota()
 
     @api.model
     def validate_portal_creation_data(self, values):
@@ -399,6 +452,30 @@ class EvmPaymentRequest(models.Model):
             )
         return True
 
+    def action_validate(self):
+        self._ensure_foundation_can_process()
+        self._ensure_submitted_requests(_("Seule une demande soumise peut etre validee."))
+
+        with self.env.cr.savepoint():
+            for record in self:
+                record.with_context(evm_allow_payment_request_workflow_write=True).write(
+                    {
+                        "state": "validated",
+                        "completion_request_reason": False,
+                        "refusal_reason": False,
+                    }
+                )
+                record.message_post(
+                    body=_(
+                        "Demande de paiement validee par la fondation avec %(count)s seance(s) retenue(s). "
+                        "Solde restant sur le dossier: %(remaining)s.",
+                        count=record.sessions_count,
+                        remaining=record.case_remaining_session_count,
+                    ),
+                    subtype_xmlid="mail.mt_comment",
+                )
+        return True
+
     def action_open_attachments(self):
         self.ensure_one()
         return {
@@ -453,6 +530,13 @@ class EvmPaymentRequest(models.Model):
             and any(record.state == "refused" for record in self)
         ):
             raise AccessError(_("Une demande refusee est cloturee et ne peut plus etre modifiee."))
+        if (
+            set(vals) & self._foundation_validation_editable_fields
+            and not allow_workflow_write
+            and self._is_internal_manual_management_context()
+            and any(record.state != "submitted" for record in self)
+        ):
+            raise AccessError(_("Les donnees de validation ne peuvent etre ajustees que sur une demande soumise."))
         if "name" in vals:
             vals["name"] = self._sanitize_name(vals["name"])
         if "completion_request_reason" in vals and not allow_workflow_write:

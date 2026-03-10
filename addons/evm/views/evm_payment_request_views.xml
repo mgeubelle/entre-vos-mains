@@ -61,6 +61,13 @@
             <form string="Demande de paiement" create="false" delete="false">
                 <header>
                     <button
+                        name="action_validate"
+                        type="object"
+                        string="Valider"
+                        class="btn-primary"
+                        invisible="state != 'submitted'"
+                    />
+                    <button
                         name="action_return_to_complete"
                         type="object"
                         string="Retourner a completer"
@@ -95,8 +102,8 @@
                         </group>
                     </group>
                     <group string="Demande">
-                        <field name="sessions_count" readonly="1"/>
-                        <field name="amount_total" readonly="1"/>
+                        <field name="sessions_count" readonly="state != 'submitted'"/>
+                        <field name="amount_total" readonly="state != 'submitted'"/>
                         <field
                             name="completion_request_reason"
                             placeholder="Expliquez clairement ce que le patient doit completer."
@@ -109,6 +116,11 @@
                             readonly="state != 'submitted'"
                             invisible="state != 'submitted' and not refusal_reason"
                         />
+                    </group>
+                    <group string="Suivi du dossier">
+                        <field name="case_authorized_session_count" readonly="1"/>
+                        <field name="case_sessions_consumed" readonly="1"/>
+                        <field name="case_remaining_session_count" readonly="1"/>
                     </group>
                     <group string="Justificatifs">
                         <field name="attachment_ids" widget="many2many_binary" nolabel="1" readonly="1"/>

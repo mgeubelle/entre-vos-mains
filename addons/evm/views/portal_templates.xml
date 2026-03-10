@@ -258,18 +258,9 @@
                                 <div class="col">
                                     <div class="rounded border bg-light p-3 h-100">
                                         <p class="text-muted mb-1">Seances restantes</p>
-                                        <div
-                                            t-attf-class="fw-semibold #{'text-danger' if case.remaining_session_count &lt; 0 else ''}"
-                                            t-esc="case.remaining_session_count"
-                                        />
+                                        <div class="fw-semibold" t-esc="case.remaining_session_count"/>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div t-if="case.remaining_session_count &lt; 0" class="alert alert-warning mt-3 mb-0" role="alert">
-                                Les seances remboursees depassent actuellement le quota autorise de
-                                <span class="fw-semibold" t-esc="abs(case.remaining_session_count)"/>
-                                seance(s). Contactez la fondation si cette situation persiste.
                             </div>
 
                             <div class="mt-3">

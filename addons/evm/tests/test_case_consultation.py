@@ -39,15 +39,15 @@ class TestEvmCaseConsultation(TransactionCase):
         self.assertEqual(case.remaining_session_count, 0)
         self.assertEqual(case.patient_display_name, self.patient_user.partner_id.display_name)
 
-    def test_case_consumed_and_remaining_sessions_only_follow_validated_or_paid_requests(self):
+    def test_case_consumed_and_remaining_sessions_only_follow_finalized_requests(self):
         case = self.env["evm.case"].create(
             {
                 "name": "Dossier compteur seances",
                 "kine_user_id": self.kine_user.id,
                 "patient_user_id": self.patient_user.id,
                 "state": "accepted",
-                "requested_session_count": 12,
-                "authorized_session_count": 9,
+                "requested_session_count": 14,
+                "authorized_session_count": 12,
             }
         )
 
@@ -77,16 +77,22 @@ class TestEvmCaseConsultation(TransactionCase):
                     "sessions_count": 1,
                     "state": "paid",
                 },
+                {
+                    "name": "Demande cloturee",
+                    "case_id": case.id,
+                    "sessions_count": 2,
+                    "state": "closed",
+                },
             ]
         )
 
-        self.assertEqual(case.sessions_consumed, 5)
-        self.assertEqual(case.remaining_session_count, 4)
+        self.assertEqual(case.sessions_consumed, 7)
+        self.assertEqual(case.remaining_session_count, 5)
 
-    def test_case_remaining_sessions_keeps_negative_gap_when_consumption_exceeds_authorization(self):
+    def test_case_remaining_sessions_cannot_be_driven_negative_by_validated_requests(self):
         case = self.env["evm.case"].create(
             {
-                "name": "Dossier depassement seances",
+                "name": "Dossier quota bloque",
                 "kine_user_id": self.kine_user.id,
                 "patient_user_id": self.patient_user.id,
                 "state": "accepted",
@@ -97,15 +103,24 @@ class TestEvmCaseConsultation(TransactionCase):
 
         self.env["evm.payment_request"].create(
             {
-                "name": "Demande depassant le quota",
+                "name": "Demande validee quota",
                 "case_id": case.id,
-                "sessions_count": 5,
+                "sessions_count": 3,
                 "state": "validated",
             }
         )
+        self.assertEqual(case.sessions_consumed, 3)
+        self.assertEqual(case.remaining_session_count, 0)
 
-        self.assertEqual(case.sessions_consumed, 5)
-        self.assertEqual(case.remaining_session_count, -2)
+        with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
+            self.env["evm.payment_request"].create(
+                {
+                    "name": "Demande bloquee par quota",
+                    "case_id": case.id,
+                    "sessions_count": 1,
+                    "state": "validated",
+                }
+            )
 
     def test_case_creation_adds_a_visible_activity_entry(self):
         case = self.env["evm.case"].create(

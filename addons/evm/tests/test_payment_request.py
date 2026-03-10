@@ -731,6 +731,167 @@ class TestEvmPaymentRequest(TransactionCase):
         with self.assertRaisesRegex(ValidationError, "brouillon ou a completer"):
             payment_request.with_user(self.patient_user).action_submit()
 
+    def test_foundation_can_validate_submitted_request_with_inline_adjustments_and_update_case_balance(self):
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande validation fondation",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "submitted",
+                "amount_total": 90.0,
+                "completion_request_reason": "Ancien motif a purger",
+                "refusal_reason": "Ancien refus a purger",
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_validate",
+            groups="evm.group_evm_fondation",
+        )
+
+        payment_request.with_user(foundation_user).write(
+            {
+                "sessions_count": 4,
+                "amount_total": 120.0,
+            }
+        )
+        result = payment_request.with_user(foundation_user).action_validate()
+
+        self.assertTrue(result)
+        self.assertEqual(payment_request.state, "validated")
+        self.assertEqual(payment_request.sessions_count, 4)
+        self.assertEqual(payment_request.amount_total, 120.0)
+        self.assertFalse(payment_request.completion_request_reason)
+        self.assertFalse(payment_request.refusal_reason)
+        self.assertEqual(self.accepted_case.sessions_consumed, 4)
+        self.assertEqual(self.accepted_case.remaining_session_count, 8)
+        history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+        self.assertTrue(any("validee" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(any("4" in (body or "") for body in history_messages.mapped("body")))
+
+    def test_validation_requires_foundation_user_submitted_state_and_available_authorized_sessions(self):
+        self.env["evm.payment_request"].create(
+            {
+                "name": "Demande deja validee",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 10,
+                "state": "validated",
+            }
+        )
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande a valider sous quota",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "submitted",
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_validate_rules",
+            groups="evm.group_evm_fondation",
+        )
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(self.patient_user).action_validate()
+
+        with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
+            payment_request.with_user(foundation_user).action_validate()
+
+        self.assertEqual(payment_request.state, "submitted")
+        self.assertEqual(self.accepted_case.sessions_consumed, 10)
+        self.assertEqual(self.accepted_case.remaining_session_count, 2)
+
+        payment_request.with_user(foundation_user).write({"sessions_count": 2})
+        payment_request.with_user(foundation_user).action_validate()
+
+        self.assertEqual(payment_request.state, "validated")
+        self.assertEqual(self.accepted_case.sessions_consumed, 12)
+        self.assertEqual(self.accepted_case.remaining_session_count, 0)
+
+        with self.assertRaisesRegex(ValidationError, "soumise"):
+            payment_request.with_user(foundation_user).action_validate()
+
+        with self.assertRaisesRegex(AccessError, "donnees de validation"):
+            payment_request.with_user(foundation_user).write({"sessions_count": 1})
+
+    def test_validation_rejects_requests_on_non_accepted_cases(self):
+        case = self.env["evm.case"].create(
+            {
+                "name": "Dossier cloture validation",
+                "kine_user_id": self.kine_user.id,
+                "patient_user_id": self.patient_user.id,
+                "state": "closed",
+                "requested_session_count": 6,
+                "authorized_session_count": 4,
+            }
+        )
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande dossier cloture",
+                "case_id": case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_validate_closed_case",
+            groups="evm.group_evm_fondation",
+        )
+
+        with self.assertRaisesRegex(ValidationError, "dossier accepte"):
+            payment_request.with_user(foundation_user).action_validate()
+
+        self.assertEqual(payment_request.state, "submitted")
+        self.assertEqual(case.sessions_consumed, 0)
+        self.assertEqual(case.remaining_session_count, 4)
+
+    def test_validated_paid_or_closed_requests_cannot_exceed_authorized_case_sessions(self):
+        case = self.env["evm.case"].create(
+            {
+                "name": "Dossier quota validation",
+                "kine_user_id": self.kine_user.id,
+                "patient_user_id": self.patient_user.id,
+                "state": "accepted",
+                "requested_session_count": 10,
+                "authorized_session_count": 3,
+            }
+        )
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande validee initiale",
+                "case_id": case.id,
+                "sessions_count": 3,
+                "state": "validated",
+            }
+        )
+
+        with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
+            self.env["evm.payment_request"].create(
+                {
+                    "name": "Demande validee en trop",
+                    "case_id": case.id,
+                    "sessions_count": 1,
+                    "state": "validated",
+                }
+            )
+
+        with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
+            payment_request.write({"sessions_count": 4})
+
+        with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
+            self.env["evm.payment_request"].create(
+                {
+                    "name": "Demande cloturee en trop",
+                    "case_id": case.id,
+                    "sessions_count": 1,
+                    "state": "closed",
+                }
+            )
+
     def test_foundation_can_open_submitted_request_attachments_from_processing_flow(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
             {
@@ -816,7 +977,13 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn('create="false"', list_view.arch_db)
         self.assertIn('delete="false"', form_view.arch_db)
         self.assertIn("attachment_ids", form_view.arch_db)
+        self.assertIn('name="action_validate"', form_view.arch_db)
         self.assertIn('name="action_refuse"', form_view.arch_db)
+        self.assertIn('name="case_authorized_session_count"', form_view.arch_db)
+        self.assertIn('name="case_sessions_consumed"', form_view.arch_db)
+        self.assertIn('name="case_remaining_session_count"', form_view.arch_db)
+        self.assertIn('name="sessions_count" readonly="state != \'submitted\'"', form_view.arch_db)
+        self.assertIn('name="amount_total" readonly="state != \'submitted\'"', form_view.arch_db)
         self.assertIn('name="refusal_reason"', form_view.arch_db)
         self.assertIn('name="refused"', self.env.ref("evm.evm_payment_request_view_search").arch_db)
 

@@ -146,26 +146,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "evm_patient_visible": True,
             }
         )
-        cls.over_consumed_case = cls.env["evm.case"].create(
-            {
-                "name": "Dossier patient depassement",
-                "kine_user_id": cls.kine_user.id,
-                "patient_user_id": cls.patient_user.id,
-                "state": "accepted",
-                "requested_session_count": 12,
-                "authorized_session_count": 3,
-            }
-        )
-        cls.env["evm.payment_request"].create(
-            {
-                "name": "Demande depassement portail",
-                "case_id": cls.over_consumed_case.id,
-                "sessions_count": 5,
-                "state": "validated",
-                "amount_total": 200.0,
-            }
-        )
-
     def test_patient_portal_pages_show_case_access_and_payment_request_entrypoints(self):
         self.authenticate(self.patient_login, self.patient_password)
 
@@ -491,14 +471,42 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertRegex(detail_response.text, r">\s*5\s*<")
         self.assertRegex(detail_response.text, r">\s*7\s*<")
 
-    def test_patient_portal_case_detail_surfaces_quota_overrun_without_hiding_it(self):
+    def test_patient_portal_case_detail_shows_validated_request_adjustments_and_updated_balance(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_portal_validation",
+            groups="evm.group_evm_fondation",
+            name="Fondation Validation",
+        )
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande validation portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "submitted",
+                "amount_total": 90.0,
+            }
+        )
+        payment_request.with_user(foundation_user).write(
+            {
+                "sessions_count": 6,
+                "amount_total": 210.0,
+            }
+        )
+        payment_request.with_user(foundation_user).action_validate()
+
         self.authenticate(self.patient_login, self.patient_password)
 
-        detail_response = self.url_open(f"/my/evm/cases/{self.over_consumed_case.id}")
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response_text = html.unescape(detail_response.text)
 
         self.assertEqual(detail_response.status_code, 200)
-        self.assertIn("depassent actuellement le quota autorise", detail_response.text)
-        self.assertRegex(detail_response.text, r">\s*-2\s*<")
+        self.assertIn("Demande validation portail", response_text)
+        self.assertRegex(detail_response.text, r">\s*12\s*<")
+        self.assertRegex(detail_response.text, r">\s*11\s*<")
+        self.assertRegex(detail_response.text, r">\s*1\s*<")
+        self.assertRegex(response_text, r"210(?:[.,]00)")
+        self.assertIn("Demande de paiement validee par la fondation", response_text)
 
     def test_patient_portal_payment_request_form_creates_a_draft_request_once_per_submission_token(self):
         self.authenticate(self.patient_login, self.patient_password)
