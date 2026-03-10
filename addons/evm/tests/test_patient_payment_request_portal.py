@@ -279,6 +279,133 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         response_text = html.unescape(success_response.text)
         self.assertIn("La demande de paiement a ete soumise a la fondation.", response_text)
         self.assertNotIn("Motif de retour", response_text)
+        self.assertIn("Historique des echanges", response_text)
+        self.assertIn("Demande de paiement completee puis soumise a nouveau par le patient", response_text)
+
+    def test_patient_portal_case_detail_can_update_request_to_complete_before_resubmission(self):
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande a mettre a jour portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "to_complete",
+                "amount_total": 90.0,
+                "completion_request_reason": "Merci de preciser le nombre de seances et d'ajouter une preuve complementaire.",
+            }
+        )
+        existing_attachment = self.env["ir.attachment"].create(
+            {
+                "name": "facture-existante.pdf",
+                "datas": base64.b64encode(MINIMAL_PDF),
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": payment_request.id,
+                "evm_patient_visible": True,
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        update_response = self.url_open(
+            f"/my/evm/payment-requests/{payment_request.id}/update",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+                "name": "Demande mise a jour portail",
+                "sessions_count": "5",
+                "amount_total": "125.50",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(update_response.status_code, 303)
+        self.assertRegex(update_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+        self.assertEqual(payment_request.name, "Demande mise a jour portail")
+        self.assertEqual(payment_request.sessions_count, 5)
+        self.assertEqual(payment_request.amount_total, 125.5)
+        self.assertEqual(payment_request.state, "to_complete")
+        self.assertEqual(
+            payment_request.completion_request_reason,
+            "Merci de preciser le nombre de seances et d'ajouter une preuve complementaire.",
+        )
+        self.assertEqual(payment_request.attachment_ids, existing_attachment)
+
+        success_response = self.url_open(update_response.headers["Location"])
+        response_text = html.unescape(success_response.text)
+        self.assertIn("Les informations de la demande ont ete mises a jour.", response_text)
+        self.assertIn("Demande mise a jour portail", response_text)
+        self.assertIn("facture-existante.pdf", response_text)
+        self.assertIn('value="Demande mise a jour portail"', response_text)
+        self.assertIn('value="5"', response_text)
+        self.assertIn('value="125.50"', response_text)
+
+    def test_patient_portal_case_detail_shows_update_errors_for_request_to_complete(self):
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande invalide portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "to_complete",
+                "amount_total": 90.0,
+                "completion_request_reason": "Merci d'ajouter les informations manquantes.",
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response = self.url_open(
+            f"/my/evm/payment-requests/{payment_request.id}/update",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+                "name": "   ",
+                "sessions_count": "0",
+                "amount_total": "-1",
+            },
+        )
+        response_text = html.unescape(response.text)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Veuillez corriger les erreurs ci-dessous.", response_text)
+        self.assertIn("Le nom de la demande ne peut pas etre vide.", response_text)
+        self.assertIn("Veuillez renseigner un nombre de seances strictement positif.", response_text)
+        self.assertIn("Veuillez renseigner un montant positif ou nul.", response_text)
+        self.assertIn("Merci d'ajouter les informations manquantes.", response_text)
+        self.assertEqual(payment_request.name, "Demande invalide portail")
+        self.assertEqual(payment_request.sessions_count, 3)
+        self.assertEqual(payment_request.amount_total, 90.0)
+
+    def test_patient_portal_case_detail_rejects_empty_name_on_update(self):
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande nom vide portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "to_complete",
+                "amount_total": 90.0,
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response = self.url_open(
+            f"/my/evm/payment-requests/{payment_request.id}/update",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+                "name": "",
+                "sessions_count": "3",
+                "amount_total": "90.00",
+            },
+        )
+        response_text = html.unescape(response.text)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Le nom de la demande ne peut pas etre vide.", response_text)
+        self.assertEqual(payment_request.name, "Demande nom vide portail")
 
     def test_patient_portal_document_download_refuses_unrelated_case_attachment(self):
         self.authenticate(self.patient_login, self.patient_password)

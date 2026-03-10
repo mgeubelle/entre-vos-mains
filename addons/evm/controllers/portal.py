@@ -106,6 +106,19 @@ class EvmCustomerPortal(CustomerPortal):
             return {}
         return flash_payload
 
+    def _set_payment_request_update_flash(self, case_id, request_id, message):
+        request.session["evm_payment_request_update_flash"] = {
+            "case_id": case_id,
+            "request_id": request_id,
+            "message": message,
+        }
+
+    def _pop_payment_request_update_flash(self, case_id):
+        flash_payload = request.session.pop("evm_payment_request_update_flash", None)
+        if not flash_payload or flash_payload.get("case_id") != case_id:
+            return {}
+        return flash_payload
+
     def _issue_payment_request_submit_token(self, case_id, request_id):
         token = uuid4().hex
         submission_store = request.session.get("evm_payment_request_submit_store", {})
@@ -162,6 +175,11 @@ class EvmCustomerPortal(CustomerPortal):
             lambda message: message.body and (not message.subtype_id or not message.subtype_id.internal)
         ).sorted(lambda message: message.date or message.create_date, reverse=True)
 
+    def _get_allowed_payment_request_history_messages(self, payment_request):
+        return payment_request.message_ids.filtered(
+            lambda message: message.body and (not message.subtype_id or not message.subtype_id.internal)
+        ).sorted(lambda message: message.date or message.create_date, reverse=True)
+
     def _prepare_case_creation_values(self, form_values=None, errors=None):
         values = self._prepare_portal_layout_values()
         values.update(
@@ -207,6 +225,21 @@ class EvmCustomerPortal(CustomerPortal):
         if mimetype.startswith("image/"):
             return _("Image")
         return _("Fichier")
+
+    def _format_payment_request_amount_total(self, amount_total):
+        if amount_total in (False, None):
+            return ""
+        return f"{amount_total:.2f}"
+
+    def _build_payment_request_form_values(self, payment_request, overrides=None):
+        values = {
+            "name": payment_request.name or "",
+            "sessions_count": str(payment_request.sessions_count or ""),
+            "amount_total": self._format_payment_request_amount_total(payment_request.amount_total),
+        }
+        if overrides:
+            values.update(overrides)
+        return values
 
     def _get_patient_case_document_entries(self, case_id, payment_requests, page=1, url_args=None):
         if not payment_requests:
@@ -268,7 +301,16 @@ class EvmCustomerPortal(CustomerPortal):
         payment_request = request.env["evm.payment_request"].search([("id", "=", payment_request_id)], limit=1)
         return payment_request if payment_request else request.env["evm.payment_request"]
 
-    def _prepare_patient_case_values(self, case_sudo, page=1, url_args=None, upload_errors=None, submission_errors=None):
+    def _prepare_patient_case_values(
+        self,
+        case_sudo,
+        page=1,
+        url_args=None,
+        upload_errors=None,
+        submission_errors=None,
+        update_errors=None,
+        update_form_values=None,
+    ):
         payment_request_model = request.env["evm.payment_request"]
         payment_request_domain = [("case_id", "=", case_sudo.id)]
         payment_request_count = payment_request_model.search_count(payment_request_domain)
@@ -301,10 +343,23 @@ class EvmCustomerPortal(CustomerPortal):
             for payment_request in payment_requests
             if payment_request.state in payment_request._portal_submittable_states
         }
+        update_form_values_by_request = {
+            payment_request.id: self._build_payment_request_form_values(
+                payment_request,
+                overrides=(update_form_values or {}).get(payment_request.id),
+            )
+            for payment_request in payment_requests
+            if payment_request.state in payment_request._portal_resumable_states
+        }
+        payment_request_history_messages = {
+            payment_request.id: self._get_allowed_payment_request_history_messages(payment_request)
+            for payment_request in payment_requests
+        }
         values.update(
             {
                 "case": case_sudo,
                 "payment_requests": payment_requests,
+                "payment_request_history_messages": payment_request_history_messages,
                 "document_entries": document_entries,
                 "document_pager": document_pager,
                 "pager": pager,
@@ -312,6 +367,9 @@ class EvmCustomerPortal(CustomerPortal):
                 "page_name": "evm_patient_case",
                 "payment_request_page": page,
                 "document_page": document_page,
+                "update_errors": update_errors or {},
+                "update_flash": self._pop_payment_request_update_flash(case_sudo.id),
+                "update_form_values": update_form_values_by_request,
                 "upload_errors": upload_errors or {},
                 "upload_flash": self._pop_payment_request_upload_flash(case_sudo.id),
                 "submission_errors": submission_errors or {},
@@ -509,6 +567,75 @@ class EvmCustomerPortal(CustomerPortal):
         self._finish_payment_request_submission(post.get("submission_token"), payment_request.id)
         self._set_created_payment_request_flash(case_sudo.id, payment_request.id)
         return request.redirect(f"/my/evm/cases/{case_sudo.id}/payment-requests/new")
+
+    @http.route(
+        "/my/evm/payment-requests/<int:payment_request_id>/update",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        website=True,
+    )
+    def portal_my_payment_request_update(self, payment_request_id, **post):
+        payment_request = self._get_patient_payment_request_or_redirect(payment_request_id)
+        if not payment_request:
+            self._set_patient_case_flash(_("Cette demande de paiement n'est pas accessible depuis votre portail."))
+            return request.redirect("/my/evm/cases")
+
+        payment_request_page = self._coerce_positive_int(post.get("payment_request_page"))
+        document_page = self._coerce_positive_int(post.get("document_page"))
+        redirect_url = f"/my/evm/cases/{payment_request.case_id.id}"
+        if payment_request_page > 1:
+            redirect_url = f"{redirect_url}/page/{payment_request_page}"
+        if document_page > 1:
+            redirect_url = f"{redirect_url}?document_page={document_page}"
+
+        raw_name = post.get("name") or ""
+        form_values = {
+            "name": raw_name.strip(),
+            "sessions_count": (post.get("sessions_count") or "").strip(),
+            "amount_total": (post.get("amount_total") or "").strip(),
+        }
+        cleaned_values, errors = payment_request.validate_portal_creation_data(form_values)
+        if not form_values["name"]:
+            errors["name"] = _("Le nom de la demande ne peut pas etre vide.")
+        else:
+            try:
+                cleaned_values["name"] = payment_request._sanitize_name(form_values["name"], case=payment_request.case_id)
+            except ValidationError as exc:
+                errors["name"] = exc.args[0]
+
+        if errors:
+            return request.render(
+                "evm.evm_portal_my_patient_case",
+                self._prepare_patient_case_values(
+                    payment_request.case_id,
+                    page=payment_request_page,
+                    url_args={"document_page": document_page} if document_page > 1 else {},
+                    update_errors={payment_request.id: errors},
+                    update_form_values={payment_request.id: form_values},
+                ),
+            )
+
+        try:
+            payment_request.write(cleaned_values)
+        except (AccessError, ValidationError) as exc:
+            return request.render(
+                "evm.evm_portal_my_patient_case",
+                self._prepare_patient_case_values(
+                    payment_request.case_id,
+                    page=payment_request_page,
+                    url_args={"document_page": document_page} if document_page > 1 else {},
+                    update_errors={payment_request.id: {"form": exc.args[0]}},
+                    update_form_values={payment_request.id: form_values},
+                ),
+            )
+
+        self._set_payment_request_update_flash(
+            payment_request.case_id.id,
+            payment_request.id,
+            _("Les informations de la demande ont ete mises a jour."),
+        )
+        return request.redirect(redirect_url)
 
     @http.route(
         "/my/evm/payment-requests/<int:payment_request_id>/attachments/upload",

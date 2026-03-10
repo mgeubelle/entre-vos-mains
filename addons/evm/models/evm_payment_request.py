@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from math import isfinite
 from os.path import basename, splitext
 
 from odoo import _, api, fields, models
@@ -177,8 +178,19 @@ class EvmPaymentRequest(models.Model):
 
         normalized_amount = raw_amount.replace(",", ".")
         try:
-            cleaned_values["amount_total"] = float(Decimal(normalized_amount))
+            decimal_amount = Decimal(normalized_amount)
         except (InvalidOperation, TypeError, ValueError):
+            cleaned_values["amount_total"] = False
+            errors["amount_total"] = _("Veuillez renseigner un montant positif ou nul.")
+            return cleaned_values, errors
+
+        if not decimal_amount.is_finite():
+            cleaned_values["amount_total"] = False
+            errors["amount_total"] = _("Veuillez renseigner un montant positif ou nul.")
+            return cleaned_values, errors
+
+        cleaned_values["amount_total"] = float(decimal_amount)
+        if not isfinite(cleaned_values["amount_total"]):
             cleaned_values["amount_total"] = False
             errors["amount_total"] = _("Veuillez renseigner un montant positif ou nul.")
             return cleaned_values, errors
@@ -322,7 +334,8 @@ class EvmPaymentRequest(models.Model):
                 else _(
                     "Demande de paiement soumise par le patient avec %(count)s justificatif(s).",
                     count=attachment_count,
-                )
+                ),
+                subtype_xmlid="mail.mt_comment",
             )
         return True
 
@@ -344,7 +357,8 @@ class EvmPaymentRequest(models.Model):
                 body=_(
                     "Demande retournee au patient pour complementation. Motif: %(reason)s",
                     reason=sanitized_reason,
-                )
+                ),
+                subtype_xmlid="mail.mt_comment",
             )
         return True
 
@@ -383,7 +397,10 @@ class EvmPaymentRequest(models.Model):
         records = super().create(vals_list)
         for record in records:
             state_label = dict(record._fields["state"].selection).get(record.state, record.state)
-            record.message_post(body=_("Demande de paiement creee avec le statut %(state)s.", state=state_label))
+            record.message_post(
+                body=_("Demande de paiement creee avec le statut %(state)s.", state=state_label),
+                subtype_xmlid="mail.mt_comment",
+            )
         return records
 
     def write(self, vals):

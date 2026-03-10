@@ -88,6 +88,17 @@ class TestEvmPaymentRequest(TransactionCase):
                 }
             )
 
+    def test_validate_portal_creation_data_rejects_non_finite_amounts(self):
+        payment_request_model = self.env["evm.payment_request"]
+
+        for raw_amount in ("NaN", "Infinity", "-Infinity", "1e309"):
+            with self.subTest(raw_amount=raw_amount):
+                cleaned_values, errors = payment_request_model.validate_portal_creation_data(
+                    {"sessions_count": "2", "amount_total": raw_amount}
+                )
+                self.assertFalse(cleaned_values["amount_total"])
+                self.assertIn("amount_total", errors)
+
     def test_payment_request_creation_requires_access_to_an_accepted_case(self):
         with self.assertRaises(AccessError):
             self.env["evm.payment_request"].with_user(self.patient_user).create(
@@ -447,10 +458,60 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertEqual(payment_request.name, "Demande patient completee")
         self.assertEqual(payment_request.amount_total, 60)
         self.assertEqual(len(added_attachments), 1)
+        attachment_names = set(payment_request.attachment_ids.mapped("name"))
+        self.assertSetEqual(
+            attachment_names,
+            {"facture-resoumise.pdf", "preuve-complementaire.png"},
+        )
         history_messages = self.env["mail.message"].sudo().search(
             [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
         )
         self.assertTrue(any("soumise a nouveau" in (body or "").lower() for body in history_messages.mapped("body")))
+
+    def test_patient_can_update_request_to_complete_without_losing_history(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "amount_total": 45,
+            }
+        )
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-initiale.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_edit_followup",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+        payment_request.with_user(foundation_user).action_return_to_complete(
+            "Merci de preciser le nombre de seances remboursees."
+        )
+
+        payment_request.with_user(self.patient_user).write(
+            {
+                "name": "Demande completee apres retour",
+                "sessions_count": 4,
+                "amount_total": 60,
+            }
+        )
+
+        self.assertEqual(payment_request.state, "to_complete")
+        self.assertEqual(payment_request.name, "Demande completee apres retour")
+        self.assertEqual(payment_request.sessions_count, 4)
+        self.assertEqual(payment_request.amount_total, 60)
+        self.assertEqual(payment_request.attachment_ids.mapped("name"), ["facture-initiale.pdf"])
+        history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+        self.assertTrue(any("retournee" in (body or "").lower() for body in history_messages.mapped("body")))
 
     def test_return_to_complete_requires_foundation_user_submitted_state_and_reason(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(

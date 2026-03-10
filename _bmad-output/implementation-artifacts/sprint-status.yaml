@@ -61,7 +61,7 @@ development_status:
   epic-3: in-progress
   3-1-permettre-a-la-fondation-de-consulter-la-file-des-demandes-de-paiement-soumises: done
   3-2-permettre-a-la-fondation-de-retourner-une-demande-a-completer: done
-  3-3-permettre-au-patient-de-suivre-et-completer-une-demande-retournee-par-la-fondation: ready-for-dev
+  3-3-permettre-au-patient-de-suivre-et-completer-une-demande-retournee-par-la-fondation: done
   3-4-permettre-a-la-fondation-de-refuser-une-demande-de-paiement: ready-for-dev
   3-5-permettre-a-la-fondation-de-valider-une-demande-et-de-mettre-a-jour-le-suivi-des-seances: ready-for-dev
   3-6-creer-et-lier-un-paiement-odoo-brouillon-a-une-demande-validee: ready-for-dev
