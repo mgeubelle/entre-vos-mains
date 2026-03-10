@@ -437,3 +437,40 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn('create="false"', list_view.arch_db)
         self.assertIn('delete="false"', form_view.arch_db)
         self.assertIn("attachment_ids", form_view.arch_db)
+
+    def test_foundation_processing_action_is_limited_to_submitted_queue_and_allowed_groups(self):
+        action = self.env.ref("evm.evm_payment_request_action")
+
+        self.assertEqual(action.domain, "[('state', '=', 'submitted')]")
+        self.assertEqual(
+            set(action.group_ids),
+            {
+                self.env.ref("evm.group_evm_fondation"),
+                self.env.ref("evm.group_evm_admin"),
+            },
+        )
+
+    def test_foundation_processing_list_exposes_minimum_business_columns(self):
+        list_view = self.env.ref("evm.evm_payment_request_view_list")
+
+        self.assertIn('default_order="submitted_on desc, create_date desc"', list_view.arch_db)
+        self.assertIn('field name="case_id"', list_view.arch_db)
+        self.assertIn('field name="patient_user_id" string="Patient"', list_view.arch_db)
+        self.assertIn('field name="submitted_on"', list_view.arch_db)
+        self.assertIn('field name="state"', list_view.arch_db)
+        self.assertIn('field name="amount_total"', list_view.arch_db)
+        self.assertIn('field name="sessions_count"', list_view.arch_db)
+
+    def test_foundation_processing_views_deny_non_authorized_users(self):
+        list_view = self.env.ref("evm.evm_payment_request_view_list")
+        search_view = self.env.ref("evm.evm_payment_request_view_search")
+        form_view = self.env.ref("evm.evm_payment_request_view_form")
+
+        with self.assertRaises(AccessError):
+            list_view.with_user(self.patient_user)._check_view_access()
+
+        with self.assertRaises(AccessError):
+            search_view.with_user(self.patient_user)._check_view_access()
+
+        with self.assertRaises(AccessError):
+            form_view.with_user(self.patient_user)._check_view_access()
