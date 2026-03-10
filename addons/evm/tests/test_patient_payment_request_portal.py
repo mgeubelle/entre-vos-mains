@@ -1,9 +1,17 @@
 import base64
 import html
 import re
+from io import BytesIO
 
 from odoo.tests import tagged
 from odoo.tests.common import HttpCase, new_test_user
+
+MINIMAL_PDF = base64.b64decode(
+    "JVBERi0xLjEKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAxMDAgMTAwXSA+PgplbmRvYmoKdHJhaWxlcgo8PCAvUm9vdCAxIDAgUiA+PgolJUVPRgo="
+)
+MINIMAL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII="
+)
 
 
 @tagged("post_install", "-at_install")
@@ -366,6 +374,138 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertTrue(response.headers["Location"].endswith("/my"))
+
+    def test_patient_portal_case_detail_uploads_multiple_documents_for_own_draft_request(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Ajouter des justificatifs", detail_response.text)
+
+        upload_response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/attachments/upload",
+            data={"csrf_token": self._extract_csrf_token(detail_response.text)},
+            files=[
+                ("documents", ("facture-brouillon.pdf", BytesIO(MINIMAL_PDF), "application/pdf")),
+                ("documents", ("justificatif-brouillon.png", BytesIO(MINIMAL_PNG), "image/png")),
+            ],
+            allow_redirects=False,
+        )
+
+        self.assertEqual(upload_response.status_code, 303)
+        self.assertRegex(upload_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+
+        uploaded_attachments = self.env["ir.attachment"].sudo().search(
+            [
+                ("res_model", "=", "evm.payment_request"),
+                ("res_id", "=", self.accepted_case_draft_request.id),
+                ("name", "in", ["facture-brouillon.pdf", "justificatif-brouillon.png"]),
+            ]
+        )
+        self.assertEqual(len(uploaded_attachments), 2)
+        self.assertTrue(all(uploaded_attachments.mapped("evm_patient_visible")))
+
+        success_response = self.url_open(upload_response.headers["Location"])
+        self.assertIn("2 document(s) ont ete ajoutes a la demande.", success_response.text)
+        self.assertIn("facture-brouillon.pdf", success_response.text)
+        self.assertIn("justificatif-brouillon.png", success_response.text)
+
+    def test_patient_portal_case_detail_rejects_invalid_uploaded_documents_in_french(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/attachments/upload",
+            data={"csrf_token": self._extract_csrf_token(detail_response.text)},
+            files=[("documents", ("piece.exe", BytesIO(b"exe"), "application/octet-stream"))],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Veuillez corriger les erreurs ci-dessous.", html.unescape(response.text))
+        self.assertIn("Formats autorises", html.unescape(response.text))
+        self.assertFalse(
+            self.env["ir.attachment"].sudo().search(
+                [
+                    ("res_model", "=", "evm.payment_request"),
+                    ("res_id", "=", self.accepted_case_draft_request.id),
+                    ("name", "=", "piece.exe"),
+                ]
+            )
+        )
+
+    def test_patient_portal_case_detail_rejects_mismatched_file_content_in_french(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/attachments/upload",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+            },
+            files=[("documents", ("piece.pdf", BytesIO(b"pas un vrai pdf"), "application/pdf"))],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        response_text = html.unescape(response.text)
+        self.assertIn("Veuillez corriger les erreurs ci-dessous.", response_text)
+        self.assertIn("Le contenu du fichier ne correspond pas a son format autorise.", response_text)
+
+    def test_patient_portal_case_detail_refuses_upload_on_unrelated_request_with_french_message(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response = self.url_open(
+            f"/my/evm/payment-requests/{self.other_case_payment_request.id}/attachments/upload",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+            },
+            files=[("documents", ("facture.pdf", BytesIO(b"pdf"), "application/pdf"))],
+            allow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertTrue(response.headers["Location"].endswith("/my/evm/cases"))
+
+        redirected_response = self.url_open(response.headers["Location"])
+        self.assertEqual(redirected_response.status_code, 200)
+        self.assertIn(
+            "Cette demande de paiement n'est pas accessible depuis votre portail.",
+            html.unescape(redirected_response.text),
+        )
+
+    def test_patient_portal_case_detail_keeps_pagination_context_after_upload(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        for index in range(35):
+            self.env["evm.payment_request"].create(
+                {
+                    "name": f"Demande upload pagination {index:02d}",
+                    "case_id": self.accepted_case.id,
+                    "sessions_count": 1,
+                    "state": "draft",
+                }
+            )
+
+        second_page_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/page/2?document_page=2")
+        self.assertEqual(second_page_response.status_code, 200)
+
+        upload_response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/attachments/upload",
+            data={
+                "csrf_token": self._extract_csrf_token(second_page_response.text),
+                "payment_request_page": "2",
+                "document_page": "2",
+            },
+            files=[("documents", ("facture-pagination.pdf", BytesIO(MINIMAL_PDF), "application/pdf"))],
+            allow_redirects=False,
+        )
+
+        self.assertEqual(upload_response.status_code, 303)
+        self.assertRegex(upload_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}/page/2\?document_page=2$")
 
     def test_patient_portal_case_detail_rejects_unrelated_or_non_accepted_cases(self):
         self.authenticate(self.patient_login, self.patient_password)

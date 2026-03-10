@@ -1,6 +1,6 @@
 # Story 2.4: Permettre au patient de deposer des factures et justificatifs sur une demande
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,10 +37,10 @@ so that la fondation puisse verifier les pieces necessaires au remboursement.
 
 ## Tasks / Subtasks
 
-- [ ] Ajouter l'upload multi-fichiers sur une demande de paiement
-- [ ] Attacher les fichiers en `ir.attachment` sur `evm.payment_request`
-- [ ] Appliquer validations de type, taille et autorisation
-- [ ] Verifier la visibilite des pieces dans le dossier et la preservation de l'historique
+- [x] Ajouter l'upload multi-fichiers sur une demande de paiement
+- [x] Attacher les fichiers en `ir.attachment` sur `evm.payment_request`
+- [x] Appliquer validations de type, taille et autorisation
+- [x] Verifier la visibilite des pieces dans le dossier et la preservation de l'historique
 
 ## Dev Notes
 
@@ -65,7 +65,46 @@ so that la fondation puisse verifier les pieces necessaires au remboursement.
 
 GPT-5 Codex
 
+### Implementation Plan
+
+- Ajouter une route portail dediee a l'upload multi-fichiers sur une `evm.payment_request` accessible au patient.
+- Centraliser les validations d'autorisation, de format et de taille dans `evm.payment_request.portal_upload_attachments`.
+- Afficher le formulaire d'upload sur les demandes en brouillon et reutiliser la vue dossier patient pour les retours succes/erreur.
+- Couvrir le flux par des tests modele et portail, puis relancer la suite `evm` et le lint.
+
 ### Completion Notes List
 
-- Story prete pour execution par `dev-story`
+- Upload multi-fichiers ajoute sur les cartes de demandes en brouillon du dossier patient, avec feedback succes/erreur en francais.
+- Les fichiers sont rattaches a `evm.payment_request` via `ir.attachment`, stockes en binaire, marques `evm_patient_visible`, sans ecrasement des pieces existantes.
+- Les validations bloquent les formats hors `pdf/jpg/jpeg/png`, les fichiers > 10 Mo, l'absence de selection, l'acces hors portail patient et les demandes non brouillon.
+- Le dossier patient continue d'agreger l'historique documentaire, et les nouveaux uploads apparaissent dans cet espace apres redirection.
+- Revue senior corrigee: message explicite en francais sur tentative non autorisee, verification du contenu MIME reelle, preservation du contexte de pagination apres upload et tests supplementaires de non-regression.
+- Tests executes et verts:
+  - `./scripts/quality-check.sh smoke`
+  - `./scripts/quality-check.sh lint`
 
+## File List
+
+- addons/evm/models/evm_payment_request.py
+- addons/evm/controllers/portal.py
+- addons/evm/views/portal_templates.xml
+- addons/evm/tests/test_payment_request.py
+- addons/evm/tests/test_patient_payment_request_portal.py
+- _bmad-output/implementation-artifacts/2-4-permettre-au-patient-de-deposer-des-factures-et-justificatifs-sur-une-demande.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-03-10: implementation story 2.4 terminee, upload multi-fichiers portail patient ajoute avec validations FR, rattachement `ir.attachment`, affichage dossier, tests et lint verts.
+- 2026-03-10: revue senior AI appliquee, corrections de securite/UX sur upload, validations MIME renforcees, feedback portail et pagination preserves, suite qualite relancee au vert.
+
+## Senior Developer Review (AI)
+
+- Reviewer: Martin
+- Date: 2026-03-10
+- Outcome: Approve
+- Notes:
+  - Les ecarts identifies en review ont ete corriges avant cloture de la story.
+  - Le portail affiche des messages FR clairs lors des refus d'acces et des erreurs de validation.
+  - Les fichiers uploades sont verifies sur leur contenu en plus de l'extension autorisee.
+  - Les tests couvrent maintenant le contenu MIME incoherent, le message d'acces refuse et la preservation du contexte de pagination.

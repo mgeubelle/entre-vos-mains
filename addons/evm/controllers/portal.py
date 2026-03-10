@@ -11,6 +11,12 @@ class EvmCustomerPortal(CustomerPortal):
     _patient_payment_request_items_per_page = 20
     _patient_document_items_per_page = 20
 
+    def _coerce_positive_int(self, value, default=1):
+        try:
+            return max(int(value or default), 1)
+        except (TypeError, ValueError):
+            return default
+
     def _get_kine_case_domain(self):
         return [("kine_user_id", "=", request.env.user.id)]
 
@@ -73,6 +79,25 @@ class EvmCustomerPortal(CustomerPortal):
             return self._document_check_access("evm.payment_request", flash_payload["request_id"])
         except (AccessError, MissingError):
             return request.env["evm.payment_request"]
+
+    def _set_payment_request_upload_flash(self, case_id, request_id, message):
+        request.session["evm_payment_request_upload_flash"] = {
+            "case_id": case_id,
+            "request_id": request_id,
+            "message": message,
+        }
+
+    def _pop_payment_request_upload_flash(self, case_id):
+        flash_payload = request.session.pop("evm_payment_request_upload_flash", None)
+        if not flash_payload or flash_payload.get("case_id") != case_id:
+            return {}
+        return flash_payload
+
+    def _set_patient_case_flash(self, message):
+        request.session["evm_patient_case_flash"] = {"message": message}
+
+    def _pop_patient_case_flash(self):
+        return request.session.pop("evm_patient_case_flash", {})
 
     def _prepare_home_portal_values(self, counters):
         values = super()._prepare_home_portal_values(counters)
@@ -187,6 +212,57 @@ class EvmCustomerPortal(CustomerPortal):
             return None
         return case_sudo
 
+    def _get_patient_payment_request_or_redirect(self, payment_request_id):
+        if not self._is_patient_user():
+            return request.env["evm.payment_request"]
+        payment_request = request.env["evm.payment_request"].search([("id", "=", payment_request_id)], limit=1)
+        return payment_request if payment_request else request.env["evm.payment_request"]
+
+    def _prepare_patient_case_values(self, case_sudo, page=1, url_args=None, upload_errors=None):
+        payment_request_model = request.env["evm.payment_request"]
+        payment_request_domain = [("case_id", "=", case_sudo.id)]
+        payment_request_count = payment_request_model.search_count(payment_request_domain)
+        case_payment_requests = payment_request_model.search(payment_request_domain)
+        page = self._coerce_positive_int(page)
+        document_page = self._coerce_positive_int((url_args or {}).get("document_page", 1))
+        page_size = min(self._items_per_page, self._patient_payment_request_items_per_page)
+        pager = portal_pager(
+            url=f"/my/evm/cases/{case_sudo.id}",
+            total=payment_request_count,
+            page=page,
+            step=page_size,
+            url_args=url_args or {},
+        )
+        payment_requests = request.env["evm.payment_request"].search(
+            payment_request_domain,
+            order="create_date desc, id desc",
+            limit=page_size,
+            offset=pager["offset"],
+        )
+        document_entries, document_pager = self._get_patient_case_document_entries(
+            case_sudo.id,
+            case_payment_requests,
+            page=document_page,
+            url_args={"document_page": document_page} if document_page > 1 else {},
+        )
+        values = self._prepare_portal_layout_values()
+        values.update(
+            {
+                "case": case_sudo,
+                "payment_requests": payment_requests,
+                "document_entries": document_entries,
+                "document_pager": document_pager,
+                "pager": pager,
+                "default_url": f"/my/evm/cases/{case_sudo.id}",
+                "page_name": "evm_patient_case",
+                "payment_request_page": page,
+                "document_page": document_page,
+                "upload_errors": upload_errors or {},
+                "upload_flash": self._pop_payment_request_upload_flash(case_sudo.id),
+            }
+        )
+        return values
+
     def _get_portal_case_or_redirect(self, case_id):
         if not request.env["evm.case"].has_access("read"):
             return None
@@ -224,6 +300,7 @@ class EvmCustomerPortal(CustomerPortal):
                 "page_name": "evm_patient_cases" if self._is_patient_user() else "evm_cases",
                 "pager": pager,
                 "default_url": "/my/evm/cases",
+                "portal_flash": self._pop_patient_case_flash() if self._is_patient_user() else {},
             }
         )
         request.session["my_evm_cases_history"] = cases.ids[:100]
@@ -285,44 +362,10 @@ class EvmCustomerPortal(CustomerPortal):
             return request.redirect("/my/evm/cases")
 
         if self._is_patient_user():
-            payment_request_model = request.env["evm.payment_request"]
-            payment_request_domain = [("case_id", "=", case_sudo.id)]
-            payment_request_count = payment_request_model.search_count(payment_request_domain)
-            case_payment_requests = payment_request_model.search(payment_request_domain)
-            document_page = max(int(kwargs.get("document_page", 1) or 1), 1)
-            page_size = min(self._items_per_page, self._patient_payment_request_items_per_page)
-            pager = portal_pager(
-                url=f"/my/evm/cases/{case_sudo.id}",
-                total=payment_request_count,
-                page=page,
-                step=page_size,
-                url_args=kwargs,
+            return request.render(
+                "evm.evm_portal_my_patient_case",
+                self._prepare_patient_case_values(case_sudo, page=page, url_args=kwargs),
             )
-            payment_requests = request.env["evm.payment_request"].search(
-                payment_request_domain,
-                order="create_date desc, id desc",
-                limit=page_size,
-                offset=pager["offset"],
-            )
-            document_entries, document_pager = self._get_patient_case_document_entries(
-                case_sudo.id,
-                case_payment_requests,
-                page=document_page,
-                url_args={"document_page": document_page} if document_page > 1 else {},
-            )
-            values = self._prepare_portal_layout_values()
-            values.update(
-                {
-                    "case": case_sudo,
-                    "payment_requests": payment_requests,
-                    "document_entries": document_entries,
-                    "document_pager": document_pager,
-                    "pager": pager,
-                    "default_url": f"/my/evm/cases/{case_sudo.id}",
-                    "page_name": "evm_patient_case",
-                }
-            )
-            return request.render("evm.evm_portal_my_patient_case", values)
 
         values = self._prepare_portal_layout_values()
         values.update(
@@ -408,3 +451,44 @@ class EvmCustomerPortal(CustomerPortal):
         self._finish_payment_request_submission(post.get("submission_token"), payment_request.id)
         self._set_created_payment_request_flash(case_sudo.id, payment_request.id)
         return request.redirect(f"/my/evm/cases/{case_sudo.id}/payment-requests/new")
+
+    @http.route(
+        "/my/evm/payment-requests/<int:payment_request_id>/attachments/upload",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        website=True,
+    )
+    def portal_my_payment_request_upload_attachments(self, payment_request_id, **post):
+        payment_request = self._get_patient_payment_request_or_redirect(payment_request_id)
+        if not payment_request:
+            self._set_patient_case_flash(_("Cette demande de paiement n'est pas accessible depuis votre portail."))
+            return request.redirect("/my/evm/cases")
+
+        uploaded_files = request.httprequest.files.getlist("documents")
+        payment_request_page = self._coerce_positive_int(post.get("payment_request_page"))
+        document_page = self._coerce_positive_int(post.get("document_page"))
+        redirect_url = f"/my/evm/cases/{payment_request.case_id.id}"
+        if payment_request_page > 1:
+            redirect_url = f"{redirect_url}/page/{payment_request_page}"
+        if document_page > 1:
+            redirect_url = f"{redirect_url}?document_page={document_page}"
+        try:
+            attachments = payment_request.portal_upload_attachments(uploaded_files)
+        except (AccessError, ValidationError) as exc:
+            return request.render(
+                "evm.evm_portal_my_patient_case",
+                self._prepare_patient_case_values(
+                    payment_request.case_id,
+                    page=payment_request_page,
+                    url_args={"document_page": document_page} if document_page > 1 else {},
+                    upload_errors={payment_request.id: exc.args[0]},
+                ),
+            )
+
+        self._set_payment_request_upload_flash(
+            payment_request.case_id.id,
+            payment_request.id,
+            _("%(count)s document(s) ont ete ajoutes a la demande.", count=len(attachments)),
+        )
+        return request.redirect(redirect_url)

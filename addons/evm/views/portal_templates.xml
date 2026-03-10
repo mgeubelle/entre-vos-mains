@@ -168,6 +168,10 @@
                 <t t-set="title">Mes dossiers</t>
             </t>
 
+            <div t-if="portal_flash.get('message')" class="alert alert-danger" role="alert">
+                <p class="mb-0" t-esc="portal_flash.get('message')"/>
+            </div>
+
             <div t-if="not cases" class="alert alert-warning" role="alert">
                 Aucun dossier accepte n'est encore disponible pour votre compte.
             </div>
@@ -321,6 +325,50 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div
+                                        t-if="upload_flash and upload_flash.get('request_id') == payment_request.id"
+                                        class="alert alert-success mt-3 mb-0"
+                                        role="alert"
+                                    >
+                                        <t t-esc="upload_flash.get('message')"/>
+                                    </div>
+                                    <div
+                                        t-if="upload_errors.get(payment_request.id)"
+                                        class="alert alert-danger mt-3 mb-0"
+                                        role="alert"
+                                    >
+                                        <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
+                                        <p class="mb-0" t-esc="upload_errors.get(payment_request.id)"/>
+                                    </div>
+                                    <form
+                                        t-if="payment_request.state == 'draft'"
+                                        t-att-action="'/my/evm/payment-requests/%s/attachments/upload' % payment_request.id"
+                                        method="post"
+                                        enctype="multipart/form-data"
+                                        class="row g-3 mt-1"
+                                    >
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
+                                        <input type="hidden" name="document_page" t-att-value="document_page"/>
+                                        <div class="col-12">
+                                            <label t-attf-for="payment_request_documents_#{payment_request.id}" class="form-label">
+                                                Ajouter des justificatifs
+                                            </label>
+                                            <input
+                                                t-attf-id="payment_request_documents_#{payment_request.id}"
+                                                type="file"
+                                                name="documents"
+                                                multiple="multiple"
+                                                accept=".pdf,.jpg,.jpeg,.png"
+                                                class="form-control"
+                                                required="required"
+                                            />
+                                            <div class="form-text">Formats autorises : PDF, JPG, JPEG, PNG. Maximum 10 Mo par fichier.</div>
+                                        </div>
+                                        <div class="col-12 d-flex justify-content-end">
+                                            <button type="submit" class="btn btn-outline-primary">Ajouter des justificatifs</button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                             <div t-if="pager and pager.get('page_count', 0) &gt; 1" class="o_portal_pager d-flex justify-content-center my-3">
