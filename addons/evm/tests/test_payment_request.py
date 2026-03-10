@@ -52,6 +52,7 @@ class TestEvmPaymentRequest(TransactionCase):
 
         self.assertIn("sessions_count", payment_request_model._fields)
         self.assertIn("amount_total", payment_request_model._fields)
+        self.assertIn("completion_request_reason", payment_request_model._fields)
         self.assertEqual(
             list(state_selection),
             ["draft", "submitted", "to_complete", "validated", "paid", "refused", "closed"],
@@ -124,7 +125,7 @@ class TestEvmPaymentRequest(TransactionCase):
         with self.assertRaises(AccessError):
             payment_request.write({"case_id": self.pending_case.id})
 
-    def test_patient_can_only_edit_draft_requests(self):
+    def test_patient_can_only_edit_resumable_requests(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
             {
                 "case_id": self.accepted_case.id,
@@ -140,6 +141,16 @@ class TestEvmPaymentRequest(TransactionCase):
         )
         self.assertEqual(payment_request.name, "Demande patient brouillon")
         self.assertEqual(payment_request.amount_total, 45)
+
+        payment_request.sudo().with_context(evm_allow_payment_request_workflow_write=True).write(
+            {
+                "state": "to_complete",
+                "completion_request_reason": "Merci d'ajouter la facture manquante.",
+            }
+        )
+
+        payment_request.with_user(self.patient_user).write({"name": "Demande patient a completer"})
+        self.assertEqual(payment_request.name, "Demande patient a completer")
 
         payment_request.sudo().with_context(evm_allow_payment_request_workflow_write=True).write({"state": "submitted"})
 
@@ -352,6 +363,178 @@ class TestEvmPaymentRequest(TransactionCase):
             payment_request,
         )
 
+    def test_foundation_can_return_submitted_request_to_complete_with_reason_and_history(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "amount_total": 45,
+            }
+        )
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-retour.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        foundation_user = new_test_user(self.env, login="fondation_payment_request_return", groups="evm.group_evm_fondation")
+        payment_request.with_user(self.patient_user).action_submit()
+
+        result = payment_request.with_user(foundation_user).action_return_to_complete(
+            "Merci d'ajouter une facture lisible et le detail des seances."
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(payment_request.state, "to_complete")
+        self.assertEqual(
+            payment_request.completion_request_reason,
+            "Merci d'ajouter une facture lisible et le detail des seances.",
+        )
+        history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+        self.assertTrue(any("retournee" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(any("detail des seances" in (body or "").lower() for body in history_messages.mapped("body")))
+
+    def test_patient_can_complete_request_to_complete_and_resubmit_it(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "amount_total": 45,
+            }
+        )
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-resoumise.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_resubmit",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+        payment_request.with_user(foundation_user).action_return_to_complete("Merci d'ajouter une preuve complementaire.")
+
+        payment_request.with_user(self.patient_user).write(
+            {
+                "name": "Demande patient completee",
+                "amount_total": 60,
+            }
+        )
+        added_attachments = payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PNG),
+                    filename="preuve-complementaire.png",
+                    content_type="image/png",
+                )
+            ]
+        )
+        result = payment_request.with_user(self.patient_user).action_submit()
+
+        self.assertTrue(result)
+        self.assertEqual(payment_request.state, "submitted")
+        self.assertFalse(payment_request.completion_request_reason)
+        self.assertEqual(payment_request.name, "Demande patient completee")
+        self.assertEqual(payment_request.amount_total, 60)
+        self.assertEqual(len(added_attachments), 1)
+        history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+        self.assertTrue(any("soumise a nouveau" in (body or "").lower() for body in history_messages.mapped("body")))
+
+    def test_return_to_complete_requires_foundation_user_submitted_state_and_reason(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_return_rules",
+            groups="evm.group_evm_fondation",
+        )
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(self.patient_user).action_return_to_complete("Demande incomplete.")
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(foundation_user).write({"completion_request_reason": "Merci d'ajouter la facture."})
+
+        with self.assertRaisesRegex(ValidationError, "soumise"):
+            payment_request.with_user(foundation_user).action_return_to_complete("Merci d'ajouter la facture.")
+
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-retour-regles.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+
+        with self.assertRaisesRegex(ValidationError, "motif"):
+            payment_request.with_user(foundation_user).action_return_to_complete("   ")
+
+        payment_request.with_user(foundation_user).action_return_to_complete("Merci d'ajouter la facture.")
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(foundation_user).write({"completion_request_reason": "Nouveau motif"})
+
+        with self.assertRaisesRegex(ValidationError, "soumise"):
+            payment_request.with_user(foundation_user).action_return_to_complete("Nouveau motif")
+
+    def test_foundation_can_prepare_reason_inline_and_return_to_complete_from_form(self):
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+            }
+        )
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-retour-wizard.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_return_wizard",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request.with_user(self.patient_user).action_submit()
+
+        payment_request.with_user(foundation_user).write(
+            {
+                "completion_request_reason": "Merci d'ajouter le justificatif manquant.",
+            }
+        )
+        action_result = payment_request.with_user(foundation_user).action_return_to_complete()
+        form_view = self.env.ref("evm.evm_payment_request_view_form")
+
+        self.assertTrue(action_result)
+        self.assertEqual(payment_request.state, "to_complete")
+        self.assertEqual(payment_request.completion_request_reason, "Merci d'ajouter le justificatif manquant.")
+        self.assertIn('name="action_return_to_complete"', form_view.arch_db)
+        self.assertIn('name="completion_request_reason"', form_view.arch_db)
+        self.assertIn("readonly=\"state != 'submitted'\"", form_view.arch_db)
+        self.assertIn("required=\"state == 'submitted'\"", form_view.arch_db)
+
     def test_foundation_can_open_submitted_request_attachments_from_processing_flow(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
             {
@@ -441,7 +624,7 @@ class TestEvmPaymentRequest(TransactionCase):
     def test_foundation_processing_action_is_limited_to_submitted_queue_and_allowed_groups(self):
         action = self.env.ref("evm.evm_payment_request_action")
 
-        self.assertEqual(action.domain, "[('state', '=', 'submitted')]")
+        self.assertEqual(action.domain, "[]")
         self.assertEqual(
             set(action.group_ids),
             {

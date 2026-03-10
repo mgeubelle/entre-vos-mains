@@ -299,7 +299,7 @@ class EvmCustomerPortal(CustomerPortal):
         submission_tokens = {
             payment_request.id: self._issue_payment_request_submit_token(case_sudo.id, payment_request.id)
             for payment_request in payment_requests
-            if payment_request.state == "draft"
+            if payment_request.state in payment_request._portal_submittable_states
         }
         values.update(
             {

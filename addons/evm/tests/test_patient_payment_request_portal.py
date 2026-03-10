@@ -208,6 +208,78 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn(">PDF<", detail_response.text)
         self.assertIn(">Image PNG<", detail_response.text)
 
+    def test_patient_portal_case_detail_shows_completion_reason_for_request_to_complete(self):
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande a completer portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "to_complete",
+                "completion_request_reason": "Merci d'ajouter une facture lisible et les dates de seances.",
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response_text = html.unescape(detail_response.text)
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Demande a completer portail", response_text)
+        self.assertIn("Motif de retour", response_text)
+        self.assertIn("Merci d'ajouter une facture lisible et les dates de seances.", response_text)
+        self.assertIn(
+            f'/my/evm/payment-requests/{payment_request.id}/attachments/upload',
+            detail_response.text,
+        )
+        self.assertIn(
+            f'/my/evm/payment-requests/{payment_request.id}/submit',
+            detail_response.text,
+        )
+
+    def test_patient_portal_case_detail_can_resubmit_request_to_complete(self):
+        payment_request = self.env["evm.payment_request"].create(
+            {
+                "name": "Demande resoumission portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 3,
+                "state": "to_complete",
+                "completion_request_reason": "Merci d'ajouter le justificatif complementaire.",
+            }
+        )
+        self.env["ir.attachment"].create(
+            {
+                "name": "facture-resoumission.pdf",
+                "datas": base64.b64encode(MINIMAL_PDF),
+                "mimetype": "application/pdf",
+                "res_model": "evm.payment_request",
+                "res_id": payment_request.id,
+                "evm_patient_visible": True,
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        submit_response = self.url_open(
+            f"/my/evm/payment-requests/{payment_request.id}/submit",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "submission_token": self._extract_submission_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(submit_response.status_code, 303)
+        self.assertRegex(submit_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+        self.assertEqual(payment_request.state, "submitted")
+        self.assertFalse(payment_request.completion_request_reason)
+
+        success_response = self.url_open(submit_response.headers["Location"])
+        response_text = html.unescape(success_response.text)
+        self.assertIn("La demande de paiement a ete soumise a la fondation.", response_text)
+        self.assertNotIn("Motif de retour", response_text)
+
     def test_patient_portal_document_download_refuses_unrelated_case_attachment(self):
         self.authenticate(self.patient_login, self.patient_password)
 

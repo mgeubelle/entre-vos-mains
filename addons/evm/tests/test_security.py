@@ -286,7 +286,7 @@ class TestEvmSecurity(TransactionCase):
         fondation_case.with_user(fixture["fondation_user"]).write({"name": "Dossier fondation maj"})
         self.assertEqual(fondation_case.name, "Dossier fondation maj")
 
-    def test_patient_payment_request_mutations_are_limited_to_draft_payload_fields(self):
+    def test_patient_payment_request_mutations_are_limited_to_resumable_payload_states(self):
         fixture = self._create_security_fixture()
 
         second_accepted_case = self.env["evm.case"].create(
@@ -309,6 +309,16 @@ class TestEvmSecurity(TransactionCase):
 
         with self.assertRaises(AccessError):
             payment_request.with_user(fixture["patient_user"]).write({"case_id": second_accepted_case.id})
+
+        payment_request.sudo().with_context(evm_allow_payment_request_workflow_write=True).write(
+            {
+                "state": "to_complete",
+                "completion_request_reason": "Merci d'ajouter une preuve complementaire.",
+            }
+        )
+
+        payment_request.with_user(fixture["patient_user"]).write({"name": "Demande a completer modifiee"})
+        self.assertEqual(payment_request.name, "Demande a completer modifiee")
 
         payment_request.sudo().with_context(evm_allow_payment_request_workflow_write=True).write({"state": "submitted"})
 

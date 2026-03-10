@@ -69,6 +69,11 @@ class EvmPaymentRequest(models.Model):
         readonly=True,
         copy=False,
     )
+    completion_request_reason = fields.Text(
+        string="Motif de retour",
+        tracking=True,
+        copy=False,
+    )
     currency_id = fields.Many2one(
         "res.currency",
         default=lambda self: self.env.company.currency_id.id,
@@ -86,8 +91,9 @@ class EvmPaymentRequest(models.Model):
         "png": "image/png",
     }
     _portal_max_attachment_size = 10 * 1024 * 1024
-    _portal_uploadable_states = {"draft"}
-    _portal_submittable_states = {"draft"}
+    _portal_resumable_states = {"draft", "to_complete"}
+    _portal_uploadable_states = _portal_resumable_states
+    _portal_submittable_states = _portal_resumable_states
 
     def _is_internal_manual_management_context(self):
         return (
@@ -95,6 +101,23 @@ class EvmPaymentRequest(models.Model):
             and not self._is_portal_patient_context()
             and (self.env.user.has_group("evm.group_evm_fondation") or self.env.user.has_group("evm.group_evm_admin"))
         )
+
+    def _ensure_foundation_can_process(self):
+        if not (
+            self.env.user.has_group("evm.group_evm_fondation") or self.env.user.has_group("evm.group_evm_admin")
+        ):
+            raise AccessError(_("Seul un membre de la fondation peut traiter cette demande."))
+
+    def _ensure_submitted_requests(self):
+        if any(record.state != "submitted" for record in self):
+            raise ValidationError(_("Seule une demande soumise peut etre retournee a completer."))
+
+    @api.model
+    def _sanitize_completion_request_reason(self, reason):
+        sanitized_reason = (reason or "").strip()
+        if not sanitized_reason:
+            raise ValidationError(_("Veuillez renseigner un motif de retour exploitable pour le patient."))
+        return sanitized_reason
 
     def _get_attachment_domain(self):
         self.ensure_one()
@@ -187,7 +210,7 @@ class EvmPaymentRequest(models.Model):
         if self.patient_user_id != self.env.user or self.case_id.state != "accepted":
             raise AccessError(_("Cette demande de paiement n'est pas accessible depuis votre portail."))
         if self.state not in self._portal_uploadable_states:
-            raise AccessError(_("Seule une demande en brouillon peut recevoir des justificatifs."))
+            raise AccessError(_("Seule une demande en brouillon ou a completer peut recevoir des justificatifs."))
 
     def _check_portal_submission_access(self):
         self.ensure_one()
@@ -208,7 +231,7 @@ class EvmPaymentRequest(models.Model):
         errors = []
 
         if self.state not in self._portal_submittable_states:
-            errors.append(_("Seule une demande en brouillon peut etre soumise."))
+            errors.append(_("Seule une demande en brouillon ou a completer peut etre soumise."))
         if self.sessions_count <= 0:
             errors.append(_("Veuillez renseigner un nombre de seances strictement positif."))
         if not self._get_submission_attachment_count():
@@ -281,17 +304,46 @@ class EvmPaymentRequest(models.Model):
 
         submitted_on = fields.Datetime.now()
         for record in self:
+            previous_state = record.state
             attachment_count = record._get_submission_attachment_count()
+            values = {
+                "state": "submitted",
+                "submitted_on": submitted_on,
+            }
+            if previous_state == "to_complete":
+                values["completion_request_reason"] = False
+            record.with_context(evm_allow_payment_request_workflow_write=True).write(values)
+            record.message_post(
+                body=_(
+                    "Demande de paiement completee puis soumise a nouveau par le patient avec %(count)s justificatif(s).",
+                    count=attachment_count,
+                )
+                if previous_state == "to_complete"
+                else _(
+                    "Demande de paiement soumise par le patient avec %(count)s justificatif(s).",
+                    count=attachment_count,
+                )
+            )
+        return True
+
+    def action_return_to_complete(self, reason=None):
+        self._ensure_foundation_can_process()
+        self._ensure_submitted_requests()
+
+        for record in self:
+            sanitized_reason = self._sanitize_completion_request_reason(
+                reason if reason is not None else record.completion_request_reason
+            )
             record.with_context(evm_allow_payment_request_workflow_write=True).write(
                 {
-                    "state": "submitted",
-                    "submitted_on": submitted_on,
+                    "state": "to_complete",
+                    "completion_request_reason": sanitized_reason,
                 }
             )
             record.message_post(
                 body=_(
-                    "Demande de paiement soumise par le patient avec %(count)s justificatif(s).",
-                    count=attachment_count,
+                    "Demande retournee au patient pour complementation. Motif: %(reason)s",
+                    reason=sanitized_reason,
                 )
             )
         return True
@@ -342,11 +394,16 @@ class EvmPaymentRequest(models.Model):
             raise AccessError(_("Le dossier et les metadonnees systeme de la demande ne peuvent pas etre modifies."))
         if "name" in vals:
             vals["name"] = self._sanitize_name(vals["name"])
+        if "completion_request_reason" in vals and not allow_workflow_write:
+            self._ensure_foundation_can_process()
+            if any(record.state != "submitted" for record in self):
+                raise AccessError(_("Le motif de retour ne peut etre prepare que sur une demande soumise."))
+            vals["completion_request_reason"] = self._sanitize_completion_request_reason(vals["completion_request_reason"])
         if self._is_portal_patient_context():
             if set(vals) - self._patient_editable_fields and not allow_workflow_write:
                 raise AccessError(_("Le patient ne peut modifier que les informations de saisie de sa demande."))
-            if any(record.state != "draft" for record in self):
-                raise AccessError(_("Seule une demande en brouillon peut etre modifiee depuis le portail patient."))
+            if any(record.state not in self._portal_resumable_states for record in self):
+                raise AccessError(_("Seule une demande en brouillon ou a completer peut etre modifiee depuis le portail patient."))
         return super().write(vals)
 
     def unlink(self):

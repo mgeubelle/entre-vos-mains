@@ -355,8 +355,16 @@
                                         <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
                                         <p class="mb-0" t-esc="submission_errors.get(payment_request.id)"/>
                                     </div>
+                                    <div
+                                        t-if="payment_request.state == 'to_complete' and payment_request.completion_request_reason"
+                                        class="alert alert-warning mt-3 mb-0"
+                                        role="alert"
+                                    >
+                                        <p class="fw-semibold mb-1">Motif de retour</p>
+                                        <p class="mb-0" t-esc="payment_request.completion_request_reason"/>
+                                    </div>
                                     <form
-                                        t-if="payment_request.state == 'draft'"
+                                        t-if="payment_request.state in ('draft', 'to_complete')"
                                         t-att-action="'/my/evm/payment-requests/%s/attachments/upload' % payment_request.id"
                                         method="post"
                                         enctype="multipart/form-data"
@@ -385,7 +393,7 @@
                                         </div>
                                     </form>
                                     <form
-                                        t-if="payment_request.state == 'draft'"
+                                        t-if="payment_request.state in ('draft', 'to_complete')"
                                         t-att-action="'/my/evm/payment-requests/%s/submit' % payment_request.id"
                                         method="post"
                                         class="d-flex justify-content-end mt-3"
