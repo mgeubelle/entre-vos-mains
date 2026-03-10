@@ -50,8 +50,8 @@ development_status:
   1-7-ouvrir-l-acces-patient-apres-acceptation-du-dossier: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
-  2-3-permettre-au-patient-de-creer-une-demande-de-paiement: review
+  epic-2: done
+  2-3-permettre-au-patient-de-creer-une-demande-de-paiement: done
   2-1-permettre-au-patient-de-consulter-son-dossier-accepte-dans-le-portail: done
   2-2-permettre-au-patient-de-consulter-l-espace-documentaire-de-son-dossier: done
   2-4-permettre-au-patient-de-deposer-des-factures-et-justificatifs-sur-une-demande: done

@@ -1,6 +1,6 @@
 # Story 2.3: Permettre au patient de creer une demande de paiement
 
-Status: review
+Status: done
 
 ## Story
 
@@ -80,3 +80,4 @@ GPT-5 Codex
 ## Change Log
 
 - 2026-03-09: implementation de la story 2.3 avec modele `evm.payment_request`, creation portail patient et validations associees.
+- 2026-03-10: review cloturee apres revalidation `make quality-lint` et `make quality-smoke` sans echec.
