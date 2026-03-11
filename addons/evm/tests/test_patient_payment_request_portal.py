@@ -292,7 +292,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/payment-requests/{payment_request.id}/submit",
             data={
                 "csrf_token": self._extract_csrf_token(detail_response.text),
-                "submission_token": self._extract_submission_token(detail_response.text),
                 "payment_request_page": "1",
                 "document_page": "1",
             },
@@ -520,7 +519,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertRegex(response_text, r"210(?:[.,]00)")
         self.assertIn("Demande de paiement validee par la fondation", response_text)
 
-    def test_patient_portal_payment_request_form_creates_a_draft_request_once_per_submission_token(self):
+    def test_patient_portal_payment_request_form_creates_a_draft_request(self):
         self.authenticate(self.patient_login, self.patient_password)
 
         form_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/payment-requests/new")
@@ -535,7 +534,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
             data={
                 "csrf_token": self._extract_csrf_token(form_response.text),
-                "submission_token": self._extract_submission_token(form_response.text),
                 "sessions_count": "4",
                 "amount_total": "123.45",
             },
@@ -560,30 +558,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertEqual(payment_request.state, "draft")
         self.assertEqual(payment_request.amount_total, 123.45)
 
-        duplicate_submit_response = self.url_open(
-            f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
-            data={
-                "csrf_token": self._extract_csrf_token(form_response.text),
-                "submission_token": self._extract_submission_token(form_response.text),
-                "sessions_count": "4",
-                "amount_total": "123.45",
-            },
-            allow_redirects=False,
-        )
-        self.assertEqual(duplicate_submit_response.status_code, 303)
-        self.assertEqual(
-            self.env["evm.payment_request"].sudo().search_count(
-                [
-                    ("case_id", "=", self.accepted_case.id),
-                    ("patient_user_id", "=", self.patient_user.id),
-                    ("sessions_count", "=", 4),
-                    ("amount_total", "=", 123.45),
-                ]
-            ),
-            1,
-        )
-
-        success_response = self.url_open(duplicate_submit_response.headers["Location"])
+        success_response = self.url_open(submit_response.headers["Location"])
         self.assertIn("La demande de paiement a ete creee en brouillon.", success_response.text)
 
         refreshed_form_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/payment-requests/new")
@@ -598,7 +573,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
             data={
                 "csrf_token": self._extract_csrf_token(first_form_response.text),
-                "submission_token": self._extract_submission_token(first_form_response.text),
                 "sessions_count": "4",
                 "amount_total": "123.45",
             },
@@ -615,7 +589,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
             data={
                 "csrf_token": self._extract_csrf_token(second_form_response.text),
-                "submission_token": self._extract_submission_token(second_form_response.text),
                 "sessions_count": "2",
                 "amount_total": "98.76",
             },
@@ -623,16 +596,16 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         )
 
         self.assertEqual(second_submit_response.status_code, 303)
-        self.assertEqual(
-            self.env["evm.payment_request"].sudo().search_count(
-                [
-                    ("case_id", "=", self.accepted_case.id),
-                    ("patient_user_id", "=", self.patient_user.id),
-                    ("sessions_count", "in", (4, 2)),
-                ]
-            ),
-            2,
+        created_requests = self.env["evm.payment_request"].sudo().search(
+            [
+                ("case_id", "=", self.accepted_case.id),
+                ("patient_user_id", "=", self.patient_user.id),
+                ("amount_total", "in", (123.45, 98.76)),
+            ]
         )
+        self.assertEqual(len(created_requests), 2)
+        self.assertEqual(set(created_requests.mapped("sessions_count")), {4, 2})
+        self.assertEqual(set(created_requests.mapped("state")), {"draft"})
 
     def test_patient_portal_payment_request_form_shows_french_errors_and_preserves_data(self):
         self.authenticate(self.patient_login, self.patient_password)
@@ -642,7 +615,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
             data={
                 "csrf_token": self._extract_csrf_token(form_response.text),
-                "submission_token": self._extract_submission_token(form_response.text),
                 "sessions_count": "0",
                 "amount_total": "-8",
             },
@@ -826,7 +798,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/submit",
             data={
                 "csrf_token": self._extract_csrf_token(detail_response.text),
-                "submission_token": self._extract_submission_token(detail_response.text),
                 "payment_request_page": "1",
                 "document_page": "1",
             },
@@ -857,7 +828,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
         submit_payload = {
             "csrf_token": self._extract_csrf_token(detail_response.text),
-            "submission_token": self._extract_submission_token(detail_response.text),
             "payment_request_page": "1",
             "document_page": "1",
         }
@@ -889,7 +859,6 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f"/my/evm/payment-requests/{self.accepted_case_draft_request.id}/submit",
             data={
                 "csrf_token": self._extract_csrf_token(detail_response.text),
-                "submission_token": self._extract_submission_token(detail_response.text),
                 "payment_request_page": "1",
                 "document_page": "1",
             },
@@ -939,10 +908,3 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         if not csrf_token_match:
             raise AssertionError("Le formulaire portail doit exposer un jeton CSRF.")
         return csrf_token_match.group(1)
-
-    @staticmethod
-    def _extract_submission_token(page_html):
-        submission_token_match = re.search(r'name="submission_token" value="([^"]+)"', page_html)
-        if not submission_token_match:
-            raise AssertionError("Le formulaire portail doit exposer un jeton de soumission.")
-        return submission_token_match.group(1)

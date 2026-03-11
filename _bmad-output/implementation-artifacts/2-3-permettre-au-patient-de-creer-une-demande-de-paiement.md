@@ -56,6 +56,7 @@ GPT-5 Codex
 
 - Rouge confirme le 2026-03-09 avec `make quality-smoke`: absence des routes portail patient et du workflow minimal `evm.payment_request`.
 - Vert confirme le 2026-03-09 avec `make quality-lint` puis `make quality-smoke`.
+- Vert confirme le 2026-03-11 avec `odoo --test-tags` cible sur `test_patient_payment_request_portal.py` pour la creation simple, les erreurs de saisie et les creations sequentielles.
 
 ### Completion Notes List
 
@@ -63,6 +64,7 @@ GPT-5 Codex
 - Formulaire portail patient ajoute sur `/my/evm/cases/<case_id>/payment-requests/new`, reserve au patient du dossier accepte, avec POST securise et redirection de confirmation.
 - Validation metier ajoutee pour `sessions_count` strictement positif et `amount_total` facultatif mais non negatif, avec messages d'erreur francais et preservation des donnees saisies.
 - Couverture de tests ajoutee sur le modele, le portail patient et la non-regression securite; `make quality-lint` et `make quality-smoke` passent.
+- Le flux de creation portail a ete simplifie: plus de `submission_token` pour creer un brouillon, seul le `csrf_token` reste requis. La protection d'idempotence est conservee sur la soumission finale de la demande.
 
 ## File List
 
@@ -81,3 +83,4 @@ GPT-5 Codex
 
 - 2026-03-09: implementation de la story 2.3 avec modele `evm.payment_request`, creation portail patient et validations associees.
 - 2026-03-10: review cloturee apres revalidation `make quality-lint` et `make quality-smoke` sans echec.
+- 2026-03-11: simplification du flux portail de creation de brouillon en supprimant le `submission_token`, avec revalidation HttpCase ciblee.

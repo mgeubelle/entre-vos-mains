@@ -506,7 +506,6 @@
                                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
                                         <input type="hidden" name="document_page" t-att-value="document_page"/>
-                                        <input type="hidden" name="submission_token" t-att-value="submission_tokens.get(payment_request.id)"/>
                                         <button type="submit" class="btn btn-primary">Soumettre la demande</button>
                                     </form>
                                     <div class="mt-3">
@@ -710,7 +709,6 @@
 
                             <form t-att-action="'/my/evm/cases/%s/payment-requests/create' % case.id" method="post" class="row g-3">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                <input type="hidden" name="submission_token" t-att-value="submission_token"/>
 
                                 <div class="col-12">
                                     <label for="sessions_count" class="form-label">Nombre de seances concernees</label>
