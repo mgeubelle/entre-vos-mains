@@ -69,7 +69,9 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "authorized_session_count": 0,
             }
         )
-        cls.accepted_case_payment_requests = cls.env["evm.payment_request"].create(
+        cls.accepted_case_payment_requests = cls.env["evm.payment_request"].with_context(
+            evm_allow_payment_request_workflow_write=True
+        ).create(
             [
                 {
                     "name": "Demande brouillon portail",
@@ -94,6 +96,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 },
             ]
         )
+        cls.accepted_case_payment_requests = cls.env["evm.payment_request"].browse(cls.accepted_case_payment_requests.ids)
         cls.accepted_case_draft_request = cls.accepted_case_payment_requests[0]
         cls.accepted_case_validated_request = cls.accepted_case_payment_requests[1]
         cls.accepted_case_paid_request = cls.accepted_case_payment_requests[2]
@@ -127,7 +130,9 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "evm_patient_visible": False,
             }
         )
-        cls.other_case_payment_request = cls.env["evm.payment_request"].create(
+        cls.other_case_payment_request = cls.env["evm.payment_request"].with_context(
+            evm_allow_payment_request_workflow_write=True
+        ).create(
             {
                 "name": "Demande autre patient portail",
                 "case_id": cls.other_case.id,
@@ -136,6 +141,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "amount_total": 90.0,
             }
         )
+        cls.other_case_payment_request = cls.env["evm.payment_request"].browse(cls.other_case_payment_request.ids)
         cls.other_case_attachment = cls.env["ir.attachment"].create(
             {
                 "name": "facture-autre-patient.pdf",
@@ -146,6 +152,12 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "evm_patient_visible": True,
             }
         )
+
+    def _create_workflow_payment_request(self, values):
+        payment_request = self.env["evm.payment_request"].with_context(
+            evm_allow_payment_request_workflow_write=True
+        ).create(values)
+        return self.env["evm.payment_request"].browse(payment_request.ids)
     def test_patient_portal_pages_show_case_access_and_payment_request_entrypoints(self):
         self.authenticate(self.patient_login, self.patient_password)
 
@@ -189,7 +201,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn(">Image PNG<", detail_response.text)
 
     def test_patient_portal_case_detail_shows_completion_reason_for_request_to_complete(self):
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande a completer portail",
                 "case_id": self.accepted_case.id,
@@ -223,7 +235,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             groups="evm.group_evm_fondation",
             name="Fondation Paiement",
         )
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande refusee portail",
                 "case_id": self.accepted_case.id,
@@ -254,7 +266,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertNotIn(f'/my/evm/payment-requests/{payment_request.id}/submit', detail_response.text)
 
     def test_patient_portal_case_detail_can_resubmit_request_to_complete(self):
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande resoumission portail",
                 "case_id": self.accepted_case.id,
@@ -300,7 +312,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn("Demande de paiement completee puis soumise a nouveau par le patient", response_text)
 
     def test_patient_portal_case_detail_can_update_request_to_complete_before_resubmission(self):
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande a mettre a jour portail",
                 "case_id": self.accepted_case.id,
@@ -358,7 +370,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn('value="125.50"', response_text)
 
     def test_patient_portal_case_detail_shows_update_errors_for_request_to_complete(self):
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande invalide portail",
                 "case_id": self.accepted_case.id,
@@ -395,7 +407,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertEqual(payment_request.amount_total, 90.0)
 
     def test_patient_portal_case_detail_rejects_empty_name_on_update(self):
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande nom vide portail",
                 "case_id": self.accepted_case.id,
@@ -478,7 +490,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             groups="evm.group_evm_fondation",
             name="Fondation Validation",
         )
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_workflow_payment_request(
             {
                 "name": "Demande validation portail",
                 "case_id": self.accepted_case.id,
@@ -576,6 +588,51 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
 
         refreshed_form_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/payment-requests/new")
         self.assertNotIn("La demande de paiement a ete creee en brouillon.", refreshed_form_response.text)
+
+    def test_patient_portal_payment_request_form_can_create_two_distinct_draft_requests_in_sequence(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        first_form_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/payment-requests/new")
+
+        first_submit_response = self.url_open(
+            f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
+            data={
+                "csrf_token": self._extract_csrf_token(first_form_response.text),
+                "submission_token": self._extract_submission_token(first_form_response.text),
+                "sessions_count": "4",
+                "amount_total": "123.45",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(first_submit_response.status_code, 303)
+
+        second_form_response = self.url_open(first_submit_response.headers["Location"])
+        self.assertEqual(second_form_response.status_code, 200)
+        self.assertIn("La demande de paiement a ete creee en brouillon.", second_form_response.text)
+
+        second_submit_response = self.url_open(
+            f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
+            data={
+                "csrf_token": self._extract_csrf_token(second_form_response.text),
+                "submission_token": self._extract_submission_token(second_form_response.text),
+                "sessions_count": "2",
+                "amount_total": "98.76",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(second_submit_response.status_code, 303)
+        self.assertEqual(
+            self.env["evm.payment_request"].sudo().search_count(
+                [
+                    ("case_id", "=", self.accepted_case.id),
+                    ("patient_user_id", "=", self.patient_user.id),
+                    ("sessions_count", "in", (4, 2)),
+                ]
+            ),
+            2,
+        )
 
     def test_patient_portal_payment_request_form_shows_french_errors_and_preserves_data(self):
         self.authenticate(self.patient_login, self.patient_password)
@@ -725,7 +782,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
     def test_patient_portal_case_detail_keeps_pagination_context_after_upload(self):
         self.authenticate(self.patient_login, self.patient_password)
         for index in range(35):
-            self.env["evm.payment_request"].create(
+            self._create_workflow_payment_request(
                 {
                     "name": f"Demande upload pagination {index:02d}",
                     "case_id": self.accepted_case.id,
@@ -858,7 +915,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
     def test_patient_portal_case_detail_paginates_payment_requests(self):
         self.authenticate(self.patient_login, self.patient_password)
         for index in range(35):
-            self.env["evm.payment_request"].create(
+            self._create_workflow_payment_request(
                 {
                     "name": f"Demande pagination {index:02d}",
                     "case_id": self.accepted_case.id,

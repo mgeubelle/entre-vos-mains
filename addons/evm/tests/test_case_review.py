@@ -143,15 +143,17 @@ class TestEvmCaseReview(TransactionCase):
             case.with_user(self.fondation_user).write({"authorized_session_count": 13})
 
     def test_annual_cap_blocks_acceptance_and_exposes_remaining_capacity(self):
-        self.config_parameters.set_param("evm.annual_session_cap", "15")
+        today = fields.Date.context_today(self.case_model)
+        existing_usage = self.case_model._get_annual_session_cap_usage_by_year({today.year}).get(today.year, 0)
+        self.config_parameters.set_param("evm.annual_session_cap", str(existing_usage + 15))
         accepted_case = self._create_pending_case(requested=12, suffix="Accepted")
         blocked_case = self._create_pending_case(requested=8, suffix="Blocked")
 
         self._accept_case(accepted_case, authorized=10)
         blocked_case.with_user(self.fondation_user).write({"authorized_session_count": 6})
 
-        self.assertEqual(blocked_case.annual_session_cap, 15)
-        self.assertEqual(blocked_case.annual_session_cap_used, 10)
+        self.assertEqual(blocked_case.annual_session_cap, existing_usage + 15)
+        self.assertEqual(blocked_case.annual_session_cap_used, existing_usage + 10)
         self.assertEqual(blocked_case.annual_session_cap_remaining, 5)
 
         with self.assertRaisesRegex(ValidationError, "plafond annuel"):

@@ -81,6 +81,13 @@
                         class="btn-secondary"
                         invisible="state != 'submitted'"
                     />
+                    <button
+                        name="action_open_payment"
+                        type="object"
+                        string="Voir le paiement"
+                        class="btn-secondary"
+                        invisible="not payment_id"
+                    />
                     <field name="state" widget="statusbar" statusbar_visible="draft,submitted,to_complete,validated,paid,refused,closed"/>
                 </header>
                 <sheet>
@@ -121,6 +128,9 @@
                         <field name="case_authorized_session_count" readonly="1"/>
                         <field name="case_sessions_consumed" readonly="1"/>
                         <field name="case_remaining_session_count" readonly="1"/>
+                    </group>
+                    <group string="Suivi comptable">
+                        <field name="payment_id" readonly="1" invisible="not payment_id"/>
                     </group>
                     <group string="Justificatifs">
                         <field name="attachment_ids" widget="many2many_binary" nolabel="1" readonly="1"/>

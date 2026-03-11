@@ -11,7 +11,7 @@ sont introduits progressivement au fil des stories.
     "category": "Services",
     "version": "19.0.1.0.0",
     "license": "LGPL-3",
-    "depends": ["base", "mail", "portal", "website"],
+    "depends": ["base", "mail", "portal", "website", "account"],
     "assets": {
         "website.assets_frontend": [
             "evm/static/src/scss/website.scss",

@@ -7,3 +7,7 @@ access_evm_payment_request_kine,access.evm.payment.request.kine,model_evm_paymen
 access_evm_payment_request_patient,access.evm.payment.request.patient,model_evm_payment_request,evm.group_evm_patient,1,1,1,1
 access_evm_payment_request_fondation,access.evm.payment.request.fondation,model_evm_payment_request,evm.group_evm_fondation,1,1,1,1
 access_evm_payment_request_admin,access.evm.payment.request.admin,model_evm_payment_request,evm.group_evm_admin,1,1,1,1
+access_account_payment_evm_fondation_read,access.account.payment.evm.fondation.read,account.model_account_payment,evm.group_evm_fondation,1,0,0,0
+access_account_payment_evm_admin_read,access.account.payment.evm.admin.read,account.model_account_payment,evm.group_evm_admin,1,0,0,0
+access_account_journal_evm_fondation_read,access.account.journal.evm.fondation.read,account.model_account_journal,evm.group_evm_fondation,1,0,0,0
+access_account_journal_evm_admin_read,access.account.journal.evm.admin.read,account.model_account_journal,evm.group_evm_admin,1,0,0,0

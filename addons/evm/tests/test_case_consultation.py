@@ -11,6 +11,12 @@ class TestEvmCaseConsultation(TransactionCase):
         cls.kine_user = new_test_user(cls.env, login="kine_consult", groups="evm.group_evm_kine")
         cls.patient_user = new_test_user(cls.env, login="patient_consult", groups="evm.group_evm_patient")
 
+    def _create_workflow_payment_requests(self, values):
+        payment_requests = self.env["evm.payment_request"].with_context(
+            evm_allow_payment_request_workflow_write=True
+        ).create(values)
+        return self.env["evm.payment_request"].browse(payment_requests.ids)
+
     def test_case_model_exposes_consultation_fields(self):
         case_model = self.env["evm.case"]
 
@@ -51,7 +57,7 @@ class TestEvmCaseConsultation(TransactionCase):
             }
         )
 
-        self.env["evm.payment_request"].create(
+        self._create_workflow_payment_requests(
             [
                 {
                     "name": "Demande brouillon",
@@ -101,7 +107,7 @@ class TestEvmCaseConsultation(TransactionCase):
             }
         )
 
-        self.env["evm.payment_request"].create(
+        self._create_workflow_payment_requests(
             {
                 "name": "Demande validee quota",
                 "case_id": case.id,
@@ -113,7 +119,7 @@ class TestEvmCaseConsultation(TransactionCase):
         self.assertEqual(case.remaining_session_count, 0)
 
         with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
-            self.env["evm.payment_request"].create(
+            self._create_workflow_payment_requests(
                 {
                     "name": "Demande bloquee par quota",
                     "case_id": case.id,

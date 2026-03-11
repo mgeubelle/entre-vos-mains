@@ -95,6 +95,12 @@ class EvmPaymentRequest(models.Model):
         tracking=True,
         copy=False,
     )
+    payment_id = fields.Many2one(
+        "account.payment",
+        string="Paiement Odoo",
+        copy=False,
+        readonly=True,
+    )
     currency_id = fields.Many2one(
         "res.currency",
         default=lambda self: self.env.company.currency_id.id,
@@ -102,9 +108,10 @@ class EvmPaymentRequest(models.Model):
         string="Devise",
     )
 
-    _workflow_only_write_fields = {"state", "submitted_on"}
+    _workflow_only_write_fields = {"state", "submitted_on", "payment_id"}
     _immutable_write_fields = {"case_id", "patient_user_id", "currency_id"}
     _patient_editable_fields = {"name", "sessions_count", "amount_total"}
+    _patient_createable_fields = {"name", "case_id", "sessions_count", "amount_total"}
     _foundation_validation_editable_fields = {"sessions_count", "amount_total"}
     _final_state_locked_write_fields = {"name", "sessions_count", "amount_total"}
     _session_balance_counted_states = {"validated", "paid", "closed"}
@@ -181,6 +188,115 @@ class EvmPaymentRequest(models.Model):
                         authorized=authorized,
                     )
                 )
+
+    def _get_payment_partner(self):
+        self.ensure_one()
+        return self.case_id.patient_partner_id or self.patient_user_id.partner_id
+
+    def _get_payment_reference(self):
+        self.ensure_one()
+        return _(
+            "Demande %(request)s - %(case)s",
+            request=self.name,
+            case=self.case_id.name,
+        )
+
+    def _get_draft_payment_values(self):
+        self.ensure_one()
+        partner = self._get_payment_partner()
+        if not partner:
+            raise ValidationError(_("Aucun partenaire patient n'est disponible pour creer le paiement Odoo."))
+
+        preferred_payment_method_line = partner.with_company(self.env.company).property_outbound_payment_method_line_id
+        compatible_journals = self.env["account.journal"].sudo().search(
+            [
+                *self.env["account.journal"]._check_company_domain(self.env.company),
+                ("type", "in", ("bank", "cash", "credit")),
+                ("outbound_payment_method_line_ids", "!=", False),
+            ]
+        )
+        journal = preferred_payment_method_line.journal_id.filtered(lambda candidate: candidate in compatible_journals)
+        journal = journal or compatible_journals[:1]
+        if not journal:
+            raise ValidationError(_("Aucun journal de paiement sortant compatible n'est configure pour creer le paiement Odoo."))
+
+        payment_method_line = journal.outbound_payment_method_line_ids.filtered(lambda line: line.code == "manual")[:1]
+        if (
+            not payment_method_line
+            and preferred_payment_method_line
+            and preferred_payment_method_line.journal_id == journal
+            and preferred_payment_method_line in journal.outbound_payment_method_line_ids
+        ):
+            payment_method_line = preferred_payment_method_line
+        payment_method_line = payment_method_line or journal.outbound_payment_method_line_ids[:1]
+        if not payment_method_line:
+            raise ValidationError(_("Aucune methode de paiement sortante n'est disponible sur le journal configure."))
+
+        payment_values = {
+            "company_id": self.env.company.id,
+            "partner_id": partner.id,
+            "payment_type": "outbound",
+            "partner_type": "customer",
+            "amount": self.amount_total,
+            "currency_id": self.currency_id.id,
+            "journal_id": journal.id,
+            "payment_method_line_id": payment_method_line.id,
+            "memo": self.name,
+            "payment_reference": self._get_payment_reference(),
+        }
+        return payment_values
+
+    def _assert_linked_payment_matches_request(self, payment):
+        self.ensure_one()
+        expected_values = self._get_draft_payment_values()
+        mismatches = []
+        if payment.state != "draft":
+            mismatches.append(_("le paiement lie n'est plus en brouillon"))
+        if payment.company_id.id != expected_values["company_id"]:
+            mismatches.append(_("la societe du paiement lie ne correspond pas a la demande"))
+        if payment.partner_id.id != expected_values["partner_id"]:
+            mismatches.append(_("le partenaire du paiement lie ne correspond pas au patient"))
+        if payment.payment_type != expected_values["payment_type"]:
+            mismatches.append(_("le type du paiement lie n'est pas un paiement sortant"))
+        if payment.partner_type != expected_values["partner_type"]:
+            mismatches.append(_("le type de partenaire du paiement lie n'est pas conforme"))
+        if payment.currency_id.compare_amounts(payment.amount, expected_values["amount"]) != 0:
+            mismatches.append(_("le montant du paiement lie ne correspond pas au montant valide"))
+        if payment.currency_id.id != expected_values["currency_id"]:
+            mismatches.append(_("la devise du paiement lie ne correspond pas a la demande"))
+        if payment.memo != expected_values["memo"]:
+            mismatches.append(_("le libelle du paiement lie ne correspond pas a la demande"))
+        if payment.payment_reference != expected_values["payment_reference"]:
+            mismatches.append(_("la reference du paiement lie ne correspond pas a la demande"))
+        if payment.journal_id.id != expected_values["journal_id"]:
+            mismatches.append(_("le journal du paiement lie n'est pas le journal sortant attendu"))
+        if payment.payment_method_line_id.id != expected_values["payment_method_line_id"]:
+            mismatches.append(_("la methode du paiement lie n'est pas la methode sortante attendue"))
+
+        if mismatches:
+            raise ValidationError(
+                _(
+                    "Le paiement Odoo deja lie n'est pas coherent avec la demande validee: %(details)s.",
+                    details="; ".join(mismatches),
+                )
+            )
+
+    def _ensure_linked_draft_payment(self):
+        self.ensure_one()
+        self.flush_recordset(["payment_id", "state", "amount_total", "currency_id", "name"])
+        self.env.cr.execute("SELECT id FROM evm_payment_request WHERE id = %s FOR UPDATE", [self.id])
+        self.invalidate_recordset(["payment_id", "state", "amount_total", "currency_id", "name"])
+        if self.payment_id:
+            self._assert_linked_payment_matches_request(self.payment_id.sudo())
+            return self.payment_id
+        if self.state != "validated":
+            raise ValidationError(_("Le paiement Odoo ne peut etre cree que pour une demande validee."))
+        if not self.amount_total or self.amount_total <= 0:
+            raise ValidationError(_("Veuillez renseigner un montant strictement positif avant de creer le paiement Odoo."))
+
+        payment = self.env["account.payment"].sudo().create(self._get_draft_payment_values())
+        self.with_context(evm_allow_payment_request_workflow_write=True).write({"payment_id": payment.id})
+        return payment
 
     def _get_attachment_domain(self):
         self.ensure_one()
@@ -297,6 +413,14 @@ class EvmPaymentRequest(models.Model):
         if self.patient_user_id != self.env.user or self.case_id.state != "accepted":
             raise AccessError(_("Cette demande de paiement n'est pas accessible depuis votre portail."))
 
+    def _get_current_states(self):
+        self.flush_recordset(["state"])
+        self.env.cr.execute(
+            "SELECT id, state FROM evm_payment_request WHERE id IN %s",
+            [tuple(self.ids)],
+        )
+        return dict(self.env.cr.fetchall())
+
     def _get_submission_attachment_domain(self):
         return [*self._get_attachment_domain(), ("evm_patient_visible", "=", True)]
 
@@ -392,6 +516,7 @@ class EvmPaymentRequest(models.Model):
             if previous_state == "to_complete":
                 values["completion_request_reason"] = False
             record.with_context(evm_allow_payment_request_workflow_write=True).write(values)
+            record.flush_recordset(["state", "submitted_on", "completion_request_reason", "refusal_reason"])
             record.message_post(
                 body=_(
                     "Demande de paiement completee puis soumise a nouveau par le patient avec %(count)s justificatif(s).",
@@ -421,6 +546,7 @@ class EvmPaymentRequest(models.Model):
                     "refusal_reason": False,
                 }
             )
+            record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
             record.message_post(
                 body=_(
                     "Demande retournee au patient pour complementation. Motif: %(reason)s",
@@ -443,6 +569,7 @@ class EvmPaymentRequest(models.Model):
                     "refusal_reason": sanitized_reason,
                 }
             )
+            record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
             record.message_post(
                 body=_(
                     "Demande refusee par la fondation. Motif: %(reason)s",
@@ -465,16 +592,27 @@ class EvmPaymentRequest(models.Model):
                         "refusal_reason": False,
                     }
                 )
+                record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
+                payment = record._ensure_linked_draft_payment()
                 record.message_post(
                     body=_(
                         "Demande de paiement validee par la fondation avec %(count)s seance(s) retenue(s). "
-                        "Solde restant sur le dossier: %(remaining)s.",
+                        "Solde restant sur le dossier: %(remaining)s. "
+                        "Paiement Odoo brouillon lie: %(payment)s.",
                         count=record.sessions_count,
                         remaining=record.case_remaining_session_count,
+                        payment=payment.display_name,
                     ),
                     subtype_xmlid="mail.mt_comment",
                 )
         return True
+
+    def action_open_payment(self):
+        self.ensure_one()
+        self._ensure_foundation_can_process()
+        if not self.payment_id:
+            raise ValidationError(_("Aucun paiement Odoo n'est lie a cette demande."))
+        return self.payment_id.action_open_business_doc()
 
     def action_open_attachments(self):
         self.ensure_one()
@@ -493,11 +631,20 @@ class EvmPaymentRequest(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        allow_workflow_write = self.env.context.get("evm_allow_payment_request_workflow_write")
         if self._is_internal_manual_management_context():
             raise AccessError(_("La creation manuelle d'une demande de paiement n'est pas autorisee."))
         for vals in vals_list:
+            if not allow_workflow_write and set(vals) & (
+                self._workflow_only_write_fields | {"completion_request_reason", "refusal_reason"}
+            ):
+                raise AccessError(
+                    _("Les champs systeme et les informations de traitement de la demande ne peuvent etre definis qu'au travers du workflow.")
+                )
             case = self.env["evm.case"].search([("id", "=", vals.get("case_id"))], limit=1)
             if self._is_portal_patient_context():
+                if set(vals) - self._patient_createable_fields:
+                    raise AccessError(_("Le patient ne peut renseigner que les informations de saisie de sa demande."))
                 if vals.get("state") not in (None, False, "draft"):
                     raise AccessError(_("Le patient ne peut creer qu'une demande en brouillon."))
                 if not case:
@@ -519,40 +666,44 @@ class EvmPaymentRequest(models.Model):
 
     def write(self, vals):
         allow_workflow_write = self.env.context.get("evm_allow_payment_request_workflow_write")
+        current_states = self._get_current_states() if self.ids else {}
+        is_foundation_management_context = not self._is_portal_patient_context() and (
+            self.env.user.has_group("evm.group_evm_fondation") or self.env.user.has_group("evm.group_evm_admin")
+        )
         if set(vals) & self._workflow_only_write_fields and not allow_workflow_write:
-            raise AccessError(_("Le statut de la demande ne peut etre modifie que via une action metier."))
+            raise AccessError(_("Le statut et les liens systeme de la demande ne peuvent etre modifies que via une action metier."))
         if set(vals) & self._immutable_write_fields:
             raise AccessError(_("Le dossier et les metadonnees systeme de la demande ne peuvent pas etre modifies."))
         if (
             set(vals) & self._final_state_locked_write_fields
             and not allow_workflow_write
-            and self._is_internal_manual_management_context()
-            and any(record.state == "refused" for record in self)
+            and is_foundation_management_context
+            and any(state == "refused" for state in current_states.values())
         ):
             raise AccessError(_("Une demande refusee est cloturee et ne peut plus etre modifiee."))
         if (
             set(vals) & self._foundation_validation_editable_fields
             and not allow_workflow_write
-            and self._is_internal_manual_management_context()
-            and any(record.state != "submitted" for record in self)
+            and is_foundation_management_context
+            and any(state != "submitted" for state in current_states.values())
         ):
             raise AccessError(_("Les donnees de validation ne peuvent etre ajustees que sur une demande soumise."))
         if "name" in vals:
             vals["name"] = self._sanitize_name(vals["name"])
         if "completion_request_reason" in vals and not allow_workflow_write:
             self._ensure_foundation_can_process()
-            if any(record.state != "submitted" for record in self):
+            if any(state != "submitted" for state in current_states.values()):
                 raise AccessError(_("Le motif de retour ne peut etre prepare que sur une demande soumise."))
             vals["completion_request_reason"] = self._sanitize_completion_request_reason(vals["completion_request_reason"])
         if "refusal_reason" in vals and not allow_workflow_write:
             self._ensure_foundation_can_process()
-            if any(record.state != "submitted" for record in self):
+            if any(state != "submitted" for state in current_states.values()):
                 raise AccessError(_("Le motif de refus ne peut etre prepare que sur une demande soumise."))
             vals["refusal_reason"] = self._sanitize_refusal_reason(vals["refusal_reason"])
         if self._is_portal_patient_context():
             if set(vals) - self._patient_editable_fields and not allow_workflow_write:
                 raise AccessError(_("Le patient ne peut modifier que les informations de saisie de sa demande."))
-            if any(record.state not in self._portal_resumable_states for record in self):
+            if any(state not in self._portal_resumable_states for state in current_states.values()):
                 raise AccessError(_("Seule une demande en brouillon ou a completer peut etre modifiee depuis le portail patient."))
         return super().write(vals)
 

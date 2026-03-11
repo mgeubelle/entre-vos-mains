@@ -17,6 +17,26 @@ MINIMAL_PNG = base64.b64decode(
 @tagged("post_install", "-at_install")
 class TestEvmPaymentRequest(TransactionCase):
     @classmethod
+    def _get_or_create_company_account(cls, account_type, code, name):
+        account = cls.env["account.account"].search(
+            [
+                ("account_type", "=", account_type),
+                ("company_ids", "in", cls.env.company.id),
+            ],
+            limit=1,
+        )
+        if account:
+            return account
+        return cls.env["account.account"].create(
+            {
+                "name": name,
+                "code": code,
+                "account_type": account_type,
+                "company_ids": [(4, cls.env.company.id)],
+            }
+        )
+
+    @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.kine_user = new_test_user(cls.env, login="kine_payment_request", groups="evm.group_evm_kine")
@@ -26,6 +46,46 @@ class TestEvmPaymentRequest(TransactionCase):
             login="patient_payment_request_other",
             groups="evm.group_evm_patient",
         )
+        cls.receivable_account = cls._get_or_create_company_account(
+            "asset_receivable",
+            "136000",
+            "Compte client EVM",
+        )
+        cls.payable_account = cls._get_or_create_company_account(
+            "liability_payable",
+            "236000",
+            "Compte fournisseur EVM",
+        )
+        for partner in (cls.patient_user.partner_id, cls.other_patient_user.partner_id):
+            partner.with_company(cls.env.company).write(
+                {
+                    "property_account_receivable_id": cls.receivable_account.id,
+                    "property_account_payable_id": cls.payable_account.id,
+                }
+            )
+        cls.payment_journal = cls.env["account.journal"].search(
+            [
+                ("company_id", "=", cls.env.company.id),
+                ("type", "in", ("bank", "cash", "credit")),
+                ("outbound_payment_method_line_ids", "!=", False),
+            ],
+            limit=1,
+        )
+        if not cls.payment_journal:
+            cash_account = cls._get_or_create_company_account(
+                "asset_cash",
+                "570360",
+                "Tresorerie paiements EVM",
+            )
+            cls.payment_journal = cls.env["account.journal"].create(
+                {
+                    "name": "Journal paiements EVM",
+                    "code": "E36JV",
+                    "type": "cash",
+                    "company_id": cls.env.company.id,
+                    "default_account_id": cash_account.id,
+                }
+            )
         cls.accepted_case = cls.env["evm.case"].create(
             {
                 "name": "Dossier accepte demande paiement",
@@ -54,6 +114,7 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn("amount_total", payment_request_model._fields)
         self.assertIn("completion_request_reason", payment_request_model._fields)
         self.assertIn("refusal_reason", payment_request_model._fields)
+        self.assertIn("payment_id", payment_request_model._fields)
         self.assertEqual(
             list(state_selection),
             ["draft", "submitted", "to_complete", "validated", "paid", "refused", "closed"],
@@ -70,6 +131,15 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertEqual(payment_request.case_id, self.accepted_case)
         self.assertEqual(payment_request.patient_user_id, self.patient_user)
         self.assertFalse(payment_request.amount_total)
+
+    def _create_internal_payment_request(self, values):
+        payment_request = self.env["evm.payment_request"].with_context(
+            evm_allow_payment_request_workflow_write=True
+        ).create(values)
+        return self.env["evm.payment_request"].browse(payment_request.ids)
+
+    def _build_payment_reference(self, payment_request_name, case_name=None):
+        return f"Demande {payment_request_name} - {case_name or self.accepted_case.name}"
 
     def test_payment_request_creation_rejects_invalid_patient_input(self):
         with self.assertRaisesRegex(ValidationError, "seances"):
@@ -114,6 +184,38 @@ class TestEvmPaymentRequest(TransactionCase):
                 {
                     "case_id": self.accepted_case.id,
                     "sessions_count": 2,
+                }
+            )
+
+    def test_patient_cannot_inject_system_fields_when_creating_a_request(self):
+        existing_payment = self.env["account.payment"].sudo().create(
+            {
+                "partner_id": self.patient_user.partner_id.id,
+                "payment_type": "outbound",
+                "partner_type": "customer",
+                "amount": 75.0,
+                "journal_id": self.payment_journal.id,
+                "payment_method_line_id": self.payment_journal.outbound_payment_method_line_ids[:1].id,
+                "currency_id": self.env.company.currency_id.id,
+                "memo": "Paiement existant EVM",
+            }
+        )
+
+        with self.assertRaisesRegex(AccessError, "workflow"):
+            self.env["evm.payment_request"].with_user(self.patient_user).create(
+                {
+                    "case_id": self.accepted_case.id,
+                    "sessions_count": 2,
+                    "payment_id": existing_payment.id,
+                }
+            )
+
+        with self.assertRaisesRegex(AccessError, "workflow"):
+            self.env["evm.payment_request"].with_user(self.patient_user).create(
+                {
+                    "case_id": self.accepted_case.id,
+                    "sessions_count": 2,
+                    "refusal_reason": "Champ reserve",
                 }
             )
 
@@ -732,7 +834,7 @@ class TestEvmPaymentRequest(TransactionCase):
             payment_request.with_user(self.patient_user).action_submit()
 
     def test_foundation_can_validate_submitted_request_with_inline_adjustments_and_update_case_balance(self):
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_internal_payment_request(
             {
                 "name": "Demande validation fondation",
                 "case_id": self.accepted_case.id,
@@ -761,6 +863,11 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertEqual(payment_request.state, "validated")
         self.assertEqual(payment_request.sessions_count, 4)
         self.assertEqual(payment_request.amount_total, 120.0)
+        self.assertTrue(payment_request.payment_id)
+        self.assertEqual(payment_request.payment_id.state, "draft")
+        self.assertEqual(payment_request.payment_id.amount, 120.0)
+        self.assertEqual(payment_request.payment_id.partner_id, self.patient_user.partner_id)
+        self.assertEqual(payment_request.payment_id.journal_id, self.payment_journal)
         self.assertFalse(payment_request.completion_request_reason)
         self.assertFalse(payment_request.refusal_reason)
         self.assertEqual(self.accepted_case.sessions_consumed, 4)
@@ -770,9 +877,10 @@ class TestEvmPaymentRequest(TransactionCase):
         )
         self.assertTrue(any("validee" in (body or "").lower() for body in history_messages.mapped("body")))
         self.assertTrue(any("4" in (body or "") for body in history_messages.mapped("body")))
+        self.assertTrue(any("paiement" in (body or "").lower() for body in history_messages.mapped("body")))
 
     def test_validation_requires_foundation_user_submitted_state_and_available_authorized_sessions(self):
-        self.env["evm.payment_request"].create(
+        self._create_internal_payment_request(
             {
                 "name": "Demande deja validee",
                 "case_id": self.accepted_case.id,
@@ -780,12 +888,13 @@ class TestEvmPaymentRequest(TransactionCase):
                 "state": "validated",
             }
         )
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_internal_payment_request(
             {
                 "name": "Demande a valider sous quota",
                 "case_id": self.accepted_case.id,
                 "sessions_count": 3,
                 "state": "submitted",
+                "amount_total": 90.0,
             }
         )
         foundation_user = new_test_user(
@@ -828,12 +937,13 @@ class TestEvmPaymentRequest(TransactionCase):
                 "authorized_session_count": 4,
             }
         )
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_internal_payment_request(
             {
                 "name": "Demande dossier cloture",
                 "case_id": case.id,
                 "sessions_count": 2,
                 "state": "submitted",
+                "amount_total": 60.0,
             }
         )
         foundation_user = new_test_user(
@@ -860,7 +970,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "authorized_session_count": 3,
             }
         )
-        payment_request = self.env["evm.payment_request"].create(
+        payment_request = self._create_internal_payment_request(
             {
                 "name": "Demande validee initiale",
                 "case_id": case.id,
@@ -870,7 +980,7 @@ class TestEvmPaymentRequest(TransactionCase):
         )
 
         with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
-            self.env["evm.payment_request"].create(
+            self._create_internal_payment_request(
                 {
                     "name": "Demande validee en trop",
                     "case_id": case.id,
@@ -883,7 +993,7 @@ class TestEvmPaymentRequest(TransactionCase):
             payment_request.write({"sessions_count": 4})
 
         with self.assertRaisesRegex(ValidationError, "depasse les seances autorisees"):
-            self.env["evm.payment_request"].create(
+            self._create_internal_payment_request(
                 {
                     "name": "Demande cloturee en trop",
                     "case_id": case.id,
@@ -891,6 +1001,127 @@ class TestEvmPaymentRequest(TransactionCase):
                     "state": "closed",
                 }
             )
+
+    def test_validation_reuses_existing_linked_payment_without_creating_duplicate(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_validate_idempotence",
+            groups="evm.group_evm_fondation",
+        )
+        existing_payment = self.env["account.payment"].sudo().create(
+            {
+                "partner_id": self.patient_user.partner_id.id,
+                "payment_type": "outbound",
+                "partner_type": "customer",
+                "amount": 75.0,
+                "journal_id": self.payment_journal.id,
+                "payment_method_line_id": (
+                    self.payment_journal.outbound_payment_method_line_ids.filtered(lambda line: line.code == "manual")[:1]
+                    or self.payment_journal.outbound_payment_method_line_ids[:1]
+                ).id,
+                "currency_id": self.env.company.currency_id.id,
+                "memo": "Demande validation idempotente",
+                "payment_reference": self._build_payment_reference("Demande validation idempotente"),
+            }
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande validation idempotente",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+                "payment_id": existing_payment.id,
+            }
+        )
+        payment_count_before = self.env["account.payment"].sudo().search_count([])
+
+        payment_request.with_user(foundation_user).action_validate()
+
+        self.assertEqual(payment_request.payment_id, existing_payment)
+        self.assertEqual(self.env["account.payment"].sudo().search_count([]), payment_count_before)
+
+    def test_validation_rejects_inconsistent_existing_linked_payment(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_validate_inconsistent_payment",
+            groups="evm.group_evm_fondation",
+        )
+        existing_payment = self.env["account.payment"].sudo().create(
+            {
+                "partner_id": self.patient_user.partner_id.id,
+                "payment_type": "outbound",
+                "partner_type": "customer",
+                "amount": 74.0,
+                "journal_id": self.payment_journal.id,
+                "payment_method_line_id": (
+                    self.payment_journal.outbound_payment_method_line_ids.filtered(lambda line: line.code == "manual")[:1]
+                    or self.payment_journal.outbound_payment_method_line_ids[:1]
+                ).id,
+                "currency_id": self.env.company.currency_id.id,
+                "memo": "Demande validation incoherente",
+                "payment_reference": self._build_payment_reference("Demande validation incoherente"),
+            }
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande validation incoherente",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+                "payment_id": existing_payment.id,
+            }
+        )
+
+        with self.assertRaisesRegex(ValidationError, "n'est pas coherent"):
+            payment_request.with_user(foundation_user).action_validate()
+
+        self.assertEqual(payment_request.state, "submitted")
+
+    def test_validation_requires_amount_before_creating_linked_payment(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_validate_amount",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande sans montant pour paiement",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+            }
+        )
+
+        with self.assertRaisesRegex(ValidationError, "montant"):
+            payment_request.with_user(foundation_user).action_validate()
+
+        self.assertFalse(payment_request.payment_id)
+
+    def test_open_payment_requires_foundation_access(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_open_payment",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande ouverture paiement",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+            }
+        )
+        payment_request.with_user(foundation_user).action_validate()
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(self.patient_user).action_open_payment()
+
+        action = payment_request.with_user(foundation_user).action_open_payment()
+        self.assertEqual(action["res_model"], "account.payment")
+        self.assertEqual(action["res_id"], payment_request.payment_id.id)
 
     def test_foundation_can_open_submitted_request_attachments_from_processing_flow(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
@@ -982,6 +1213,8 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn('name="case_authorized_session_count"', form_view.arch_db)
         self.assertIn('name="case_sessions_consumed"', form_view.arch_db)
         self.assertIn('name="case_remaining_session_count"', form_view.arch_db)
+        self.assertIn('name="payment_id"', form_view.arch_db)
+        self.assertIn('name="action_open_payment"', form_view.arch_db)
         self.assertIn('name="sessions_count" readonly="state != \'submitted\'"', form_view.arch_db)
         self.assertIn('name="amount_total" readonly="state != \'submitted\'"', form_view.arch_db)
         self.assertIn('name="refusal_reason"', form_view.arch_db)
