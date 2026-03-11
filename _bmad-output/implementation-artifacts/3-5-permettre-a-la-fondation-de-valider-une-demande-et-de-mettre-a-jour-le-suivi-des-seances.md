@@ -1,6 +1,6 @@
 # Story 3.5: Permettre a la fondation de valider une demande et de mettre a jour le suivi des seances
 
-Status: review
+Status: done
 
 ## Story
 
@@ -88,12 +88,13 @@ GPT-5 Codex
 - 2026-03-10: revue senior AI effectuee, statut repasse a `in-progress` avec demandes de corrections avant approbation.
 - 2026-03-10: corrections de review appliquees, tests cibles relances et story remise en `review`.
 - 2026-03-10: simplification post-correctif avec retrait du verrou SQL de quota et acceptation explicite du risque de concurrence residuel.
+- 2026-03-11: risque de concurrence residuel explicitement accepte, revue finalisee et story passee a `done`.
 
 ## Senior Developer Review (AI)
 
 ### Outcome
 
-Changes Requested
+Approved with Accepted Risk
 
 ### Findings
 
@@ -101,3 +102,9 @@ Changes Requested
 - [HIGH] La validation fondation ne verifie jamais que le dossier parent est encore `accepted`. Les chemins patient bloquent bien creation, upload et soumission hors dossier accepte, mais `action_validate()` peut encore valider une demande `submitted` rattachee a un dossier `pending`, `refused` ou `closed` si un tel enregistrement existe deja ou apparait via une evolution future. Preuve: controles `accepted` presents en `addons/evm/models/evm_payment_request.py:277-291` et `addons/evm/models/evm_payment_request.py:488-499`, absents de `addons/evm/models/evm_payment_request.py:448-470`.
 - [MEDIUM] Le modele declare deja l'etat `closed` pour `evm.payment_request`, mais les calculs de consommation et de quota n'incluent que `validated` et `paid`. Le jour ou une demande historisee passe a `closed`, `sessions_consumed` et `remaining_session_count` reculeront artificiellement et rouvriront du quota. Preuve: `addons/evm/models/evm_payment_request.py:46-55`, `addons/evm/models/evm_payment_request.py:152-176` et `addons/evm/models/evm_case.py:142-152`.
 - [MEDIUM] L'invariant annonce dans la story "Aucun solde negatif ne doit etre possible" n'est pas centralise au niveau dossier. `remaining_session_count` reste une simple soustraction qui peut devenir negative si des donnees invalides existent deja ou reapparaissent par migration/evolution, et le portail conserve encore une branche explicite pour afficher ce depassement au patient. Preuve: `addons/evm/models/evm_case.py:142-152` et `addons/evm/views/portal_templates.xml:260-273`.
+
+### Review Decision
+
+- Les findings sur le controle `accepted`, la prise en compte de `closed` et le bornage du solde negatif sont corriges dans l'implementation actuelle.
+- Le risque de concurrence residuel sur la validation sans verrou explicite est connu et explicitement accepte pour cette V1 compte tenu du tres faible volume d'utilisateurs et du faible niveau de concurrence cote fondation.
+- Aucun correctif supplementaire n'est requis avant cloture de la story.
