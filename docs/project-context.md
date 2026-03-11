@@ -18,8 +18,33 @@
 - **Best practices Odoo 19**: architecture et patterns idiomatiques Odoo (modèles, vues, contrôleurs, sécurité, assets, etc.).
 - **KISS**: préférer des solutions simples, lisibles et maintenables; éviter la sur-ingénierie.
 - **Pragmatique**: minimiser les dépendances et la complexité tant que le besoin ne le justifie pas.
+- **Concurrence pragmatique**: vu le faible nombre d'utilisateurs internes attendus, ne pas sur-investir par défaut dans des mécanismes lourds de gestion des mises à jour concurrentes. Traiter les conflits évidents si le métier l'impose, mais éviter d'en faire un axe de conception prioritaire sans besoin concret.
 - **Wizards en exception**: éviter les wizards custom quand une saisie inline sur le modèle et une action métier dédiée (`action_*`) couvrent le besoin.
 - **Justification explicite**: n'introduire un wizard que si la donnée est transitoire, si l'action est réellement multi-étapes ou bulk, ou si une confirmation/prévisualisation avant effet irréversible améliore clairement l'UX.
+
+## Convention de commits
+
+- Utiliser le format obligatoire suivant pour chaque commit:
+
+	`[ADD|IMP|FIX|REF|DOC] module_name: short description assertive`
+
+- Ajouter ensuite un corps de commit court mais explicite pour préciser l'intention, l'impact métier ou technique, et les points notables de l'implémentation.
+- Signification des préfixes:
+	- `ADD`: ajout de fonctionnalité ou de comportement nouveau
+	- `IMP`: amélioration d'un comportement existant sans corriger un bug avéré
+	- `FIX`: correction de bug
+	- `REF`: refactorisation sans changement fonctionnel attendu
+	- `DOC`: documentation uniquement
+- `module_name` doit correspondre au périmètre principal du changement, par exemple `evm`, `docs`, `bmad`, `scripts`.
+- La description courte doit être lisible dans la liste des commits, formulée de manière assertive, spécifique et concise.
+- Modèle recommandé:
+
+	Sujet:
+	`[FIX] evm: escape refusal reason in history messages`
+
+	Corps:
+	`Sanitize refusal reason rendering in internal and portal histories.`
+	`Keep the displayed trace readable without changing the validation workflow.`
 
 ## Regles de workflow local
 
