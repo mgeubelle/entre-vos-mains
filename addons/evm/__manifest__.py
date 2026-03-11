@@ -27,7 +27,9 @@ sont introduits progressivement au fil des stories.
         "views/website_templates.xml",
         "views/portal_templates.xml",
     ],
-    "demo": [],
+    "demo": [
+        "demo/res_users.xml",
+    ],
     "installable": True,
     "application": False,
 }

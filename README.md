@@ -75,6 +75,20 @@ docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-com
 curl -I http://127.0.0.1/web/login
 ```
 
+## Comptes de demo locaux
+
+Le stack local partage charge les demo data Odoo pour `evm` car `without_demo = False` dans la configuration locale.
+Sur une installation locale fraiche de `evm`, cela cree les comptes de demo suivants :
+
+| Role | Login | Mot de passe |
+|---|---|---|
+| Kine | `kine@evm.com` | `odoo` |
+| Patient | `patient@evm.com` | `odoo` |
+| Fondation | `fondation@evm.com` | `odoo` |
+| Admin | `admin@evm.com` | `odoo` |
+
+Si la base locale a ete initialisee avant ce changement avec `without_demo = True`, Odoo garde la trace qu'`evm` a ete installe sans demo data. Le chemin le plus simple est alors de recreer la base locale puis de reinstalller `evm`.
+
 ## Pipeline qualite minimal
 
 Commande unique:

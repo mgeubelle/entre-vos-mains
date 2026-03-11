@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="res_users_demo_kine" model="res.users" context="{'no_reset_password': True}">
+            <field name="name">Local Kine</field>
+            <field name="login">kine@evm.com</field>
+            <field name="email">kine@evm.com</field>
+            <field name="password">odoo</field>
+            <field name="group_ids" eval="[Command.set([ref('evm.group_evm_kine')])]"/>
+        </record>
+
+        <record id="res_users_demo_patient" model="res.users" context="{'no_reset_password': True}">
+            <field name="name">Local Patient</field>
+            <field name="login">patient@evm.com</field>
+            <field name="email">patient@evm.com</field>
+            <field name="password">odoo</field>
+            <field name="group_ids" eval="[Command.set([ref('evm.group_evm_patient')])]"/>
+        </record>
+
+        <record id="res_users_demo_fondation" model="res.users" context="{'no_reset_password': True}">
+            <field name="name">Local Fondation</field>
+            <field name="login">fondation@evm.com</field>
+            <field name="email">fondation@evm.com</field>
+            <field name="password">odoo</field>
+            <field name="group_ids" eval="[Command.set([ref('evm.group_evm_fondation')])]"/>
+        </record>
+
+        <record id="res_users_demo_admin" model="res.users" context="{'no_reset_password': True}">
+            <field name="name">Local Admin</field>
+            <field name="login">admin@evm.com</field>
+            <field name="email">admin@evm.com</field>
+            <field name="password">odoo</field>
+            <field name="group_ids" eval="[Command.set([ref('evm.group_evm_admin')])]"/>
+        </record>
+    </data>
+</odoo>
