@@ -1,6 +1,6 @@
 # Story 3.4: Permettre a la fondation de refuser une demande de paiement
 
-Status: review
+Status: done
 
 ## Story
 
@@ -76,3 +76,14 @@ GPT-5 Codex
 ## Change Log
 
 - 2026-03-10: implementation completee du refus des demandes de paiement avec motif dedie, traçabilite chatter, visibilite portail/fondation et couverture de tests associee.
+- 2026-03-11: revue finale AI validee, story passee a `done`.
+
+## Senior Developer Review (AI)
+
+### Outcome
+
+Approved
+
+### Findings
+
+- Aucun finding bloquant releve sur le scope de refus. Les criteres d'acceptation sont couverts par `action_refuse`, les vues fondation/portail et les tests modele + portail.
