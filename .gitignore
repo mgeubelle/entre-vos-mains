@@ -1,5 +1,8 @@
 # BMAD internal workspace and generated artifacts
 .agents/
+.claude/
+.cursor/
+.github/
 _bmad/
 
 # Python cache artifacts
