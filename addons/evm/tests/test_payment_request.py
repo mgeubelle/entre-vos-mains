@@ -473,7 +473,9 @@ class TestEvmPaymentRequest(TransactionCase):
         )
         self.assertTrue(any("soumise" in (body or "").lower() for body in submission_messages.mapped("body")))
         self.assertEqual(
-            self.env["evm.payment_request"].with_user(foundation_user).search([("state", "=", "submitted")]),
+            self.env["evm.payment_request"].with_user(foundation_user).search(
+                [("state", "=", "submitted"), ("id", "=", payment_request.id)]
+            ),
             payment_request,
         )
 
@@ -1123,6 +1125,105 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertEqual(action["res_model"], "account.payment")
         self.assertEqual(action["res_id"], payment_request.payment_id.id)
 
+    def test_foundation_can_confirm_external_payment_on_validated_request_with_history(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_confirm_external",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande paiement externe",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+            }
+        )
+
+        payment_request.with_user(foundation_user).action_validate()
+        result = payment_request.with_user(foundation_user).action_confirm_external_payment()
+
+        self.assertTrue(result)
+        self.assertEqual(payment_request.state, "paid")
+        self.assertTrue(payment_request.payment_id)
+        self.assertEqual(payment_request.payment_id.state, "draft")
+        self.assertEqual(self.accepted_case.sessions_consumed, 2)
+        self.assertEqual(self.accepted_case.remaining_session_count, 10)
+        history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+        case_history_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.case"), ("res_id", "=", self.accepted_case.id)]
+        )
+        self.assertTrue(any("hors plateforme" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(any("payee" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(
+            any("paiement hors plateforme confirme" in (body or "").lower() for body in case_history_messages.mapped("body"))
+        )
+        self.assertTrue(any(payment_request.name in (body or "") for body in case_history_messages.mapped("body")))
+
+    def test_external_payment_confirmation_requires_foundation_user_validated_state_and_linked_payment(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_confirm_external_rules",
+            groups="evm.group_evm_fondation",
+        )
+        submitted_request = self._create_internal_payment_request(
+            {
+                "name": "Demande soumise paiement externe",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 50.0,
+            }
+        )
+        validated_without_payment = self._create_internal_payment_request(
+            {
+                "name": "Demande validee sans paiement",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 1,
+                "state": "validated",
+                "amount_total": 25.0,
+            }
+        )
+
+        with self.assertRaises(AccessError):
+            submitted_request.with_user(self.patient_user).action_confirm_external_payment()
+
+        with self.assertRaisesRegex(ValidationError, "validee"):
+            submitted_request.with_user(foundation_user).action_confirm_external_payment()
+
+        with self.assertRaisesRegex(ValidationError, "paiement Odoo lie"):
+            validated_without_payment.with_user(foundation_user).action_confirm_external_payment()
+
+        self.assertEqual(submitted_request.state, "submitted")
+        self.assertEqual(validated_without_payment.state, "validated")
+
+    def test_external_payment_confirmation_rejects_stale_or_mutated_linked_payment(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_confirm_external_stale_payment",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande paiement externe incoherente",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+            }
+        )
+
+        payment_request.with_user(foundation_user).action_validate()
+        payment_request.payment_id.sudo().write({"memo": "Paiement modifie hors workflow"})
+
+        with self.assertRaisesRegex(ValidationError, "n'est pas coherent"):
+            payment_request.with_user(foundation_user).action_confirm_external_payment()
+
+        self.assertEqual(payment_request.state, "validated")
+
     def test_foundation_can_open_submitted_request_attachments_from_processing_flow(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
             {
@@ -1215,6 +1316,7 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn('name="case_remaining_session_count"', form_view.arch_db)
         self.assertIn('name="payment_id"', form_view.arch_db)
         self.assertIn('name="action_open_payment"', form_view.arch_db)
+        self.assertIn('name="action_confirm_external_payment"', form_view.arch_db)
         self.assertIn('name="sessions_count" readonly="state != \'submitted\'"', form_view.arch_db)
         self.assertIn('name="amount_total" readonly="state != \'submitted\'"', form_view.arch_db)
         self.assertIn('name="refusal_reason"', form_view.arch_db)

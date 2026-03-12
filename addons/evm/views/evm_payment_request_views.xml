@@ -88,6 +88,13 @@
                         class="btn-secondary"
                         invisible="not payment_id"
                     />
+                    <button
+                        name="action_confirm_external_payment"
+                        type="object"
+                        string="Confirmer paiement externe"
+                        class="btn-secondary"
+                        invisible="state != 'validated' or not payment_id"
+                    />
                     <field name="state" widget="statusbar" statusbar_visible="draft,submitted,to_complete,validated,paid,refused,closed"/>
                 </header>
                 <sheet>

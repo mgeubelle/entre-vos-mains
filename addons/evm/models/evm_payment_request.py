@@ -607,6 +607,48 @@ class EvmPaymentRequest(models.Model):
                 )
         return True
 
+    def action_confirm_external_payment(self):
+        self._ensure_foundation_can_process()
+        if any(record.state != "validated" for record in self):
+            raise ValidationError(_("Seule une demande validee peut etre marquee comme payee."))
+        if any(not record.payment_id for record in self):
+            raise ValidationError(_("Un paiement Odoo lie est requis avant de confirmer un paiement hors plateforme."))
+
+        for record in self:
+            payment = record.payment_id.sudo().exists()
+            if not payment:
+                raise ValidationError(
+                    _("Le paiement Odoo lie n'est plus disponible pour confirmer ce paiement hors plateforme.")
+                )
+            record._assert_linked_payment_matches_request(payment)
+            record.with_context(evm_allow_payment_request_workflow_write=True).write(
+                {
+                    "state": "paid",
+                    "completion_request_reason": False,
+                    "refusal_reason": False,
+                }
+            )
+            record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
+            record.message_post(
+                body=_(
+                    "Paiement confirme hors plateforme par la fondation. "
+                    "La demande est marquee comme payee. "
+                    "Paiement Odoo lie: %(payment)s.",
+                    payment=payment.display_name,
+                ),
+                subtype_xmlid="mail.mt_comment",
+            )
+            record.case_id.message_post(
+                body=_(
+                    "Paiement hors plateforme confirme pour la demande %(request)s. "
+                    "Paiement Odoo lie: %(payment)s.",
+                    request=record.name,
+                    payment=payment.display_name,
+                ),
+                subtype_xmlid="mail.mt_comment",
+            )
+        return True
+
     def action_open_payment(self):
         self.ensure_one()
         self._ensure_foundation_can_process()
