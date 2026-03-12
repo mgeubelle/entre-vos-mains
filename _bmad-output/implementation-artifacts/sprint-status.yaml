@@ -58,7 +58,7 @@ development_status:
   2-5-permettre-au-patient-de-soumettre-une-demande-complete-a-la-fondation: done
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  epic-3: done
   3-1-permettre-a-la-fondation-de-consulter-la-file-des-demandes-de-paiement-soumises: done
   3-2-permettre-a-la-fondation-de-retourner-une-demande-a-completer: done
   3-3-permettre-au-patient-de-suivre-et-completer-une-demande-retournee-par-la-fondation: done
