@@ -16,6 +16,9 @@ sont introduits progressivement au fil des stories.
         "website.assets_frontend": [
             "evm/static/src/scss/website.scss",
         ],
+        "web.assets_tests": [
+            "evm/static/tests/**/*",
+        ],
     },
     "data": [
         "security/groups.xml",
