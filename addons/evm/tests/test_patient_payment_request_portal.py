@@ -285,6 +285,35 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertNotIn(f'/my/evm/payment-requests/{payment_request.id}/attachments/upload', detail_response.text)
         self.assertNotIn(f'/my/evm/payment-requests/{payment_request.id}/submit', detail_response.text)
 
+    def test_patient_portal_history_hides_internal_payment_references(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_portal_history",
+            groups="evm.group_evm_fondation",
+            name="Fondation Historique",
+        )
+        payment_request = self._create_workflow_payment_request(
+            {
+                "name": "Demande historique portail",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+            }
+        )
+        payment_request.with_user(foundation_user).action_validate()
+        payment_request.with_user(foundation_user).action_confirm_external_payment()
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        response_text = html.unescape(detail_response.text)
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Demande de paiement validee par la fondation", response_text)
+        self.assertIn("Paiement confirme hors plateforme par la fondation", response_text)
+        self.assertIn("Paiement hors plateforme confirme pour la demande", response_text)
+        self.assertNotIn(payment_request.payment_id.display_name, response_text)
+
     def test_patient_portal_case_detail_can_resubmit_request_to_complete(self):
         payment_request = self._create_workflow_payment_request(
             {

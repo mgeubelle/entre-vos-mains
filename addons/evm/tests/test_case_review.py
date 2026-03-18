@@ -47,7 +47,7 @@ class TestEvmCaseReview(TransactionCase):
         self.assertEqual(case.foundation_decision_user_id, self.fondation_user)
         self.assertEqual(case.foundation_decision_date, fields.Date.context_today(case))
         self.assertTrue(
-            any("Dossier accepte" in body for body in case.message_ids.mapped("body")),
+            any("Systeme:" in (body or "") and "Dossier accepte" in body for body in case.message_ids.mapped("body")),
             "L'acceptation doit etre tracee dans le chatter.",
         )
 
@@ -196,7 +196,7 @@ class TestEvmCaseReview(TransactionCase):
         self.assertEqual(case.foundation_decision_date, fields.Date.context_today(case))
         self.assertEqual(case.foundation_decision_note, "Pieces manquantes.")
         self.assertTrue(
-            any("Dossier refuse" in body for body in case.message_ids.mapped("body")),
+            any("Systeme:" in (body or "") and "Dossier refuse" in body for body in case.message_ids.mapped("body")),
             "Le refus doit etre trace dans le chatter.",
         )
 

@@ -115,6 +115,7 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertIn("completion_request_reason", payment_request_model._fields)
         self.assertIn("refusal_reason", payment_request_model._fields)
         self.assertIn("payment_id", payment_request_model._fields)
+        self.assertTrue(payment_request_model._fields["payment_id"].tracking)
         self.assertEqual(
             list(state_selection),
             ["draft", "submitted", "to_complete", "validated", "paid", "refused", "closed"],
@@ -471,7 +472,9 @@ class TestEvmPaymentRequest(TransactionCase):
         submission_messages = self.env["mail.message"].sudo().search(
             [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
         )
-        self.assertTrue(any("soumise" in (body or "").lower() for body in submission_messages.mapped("body")))
+        self.assertTrue(
+            any("Systeme:" in (body or "") and "soumise" in (body or "").lower() for body in submission_messages.mapped("body"))
+        )
         self.assertEqual(
             self.env["evm.payment_request"].with_user(foundation_user).search(
                 [("state", "=", "submitted"), ("id", "=", payment_request.id)]
@@ -574,7 +577,9 @@ class TestEvmPaymentRequest(TransactionCase):
         history_messages = self.env["mail.message"].sudo().search(
             [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
         )
-        self.assertTrue(any("retournee" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(
+            any("Systeme:" in (body or "") and "retournee" in (body or "").lower() for body in history_messages.mapped("body"))
+        )
         self.assertTrue(any("detail des seances" in (body or "").lower() for body in history_messages.mapped("body")))
 
     def test_foundation_can_refuse_submitted_request_with_reason_history_and_active_queue_exit(self):
@@ -611,7 +616,9 @@ class TestEvmPaymentRequest(TransactionCase):
         history_messages = self.env["mail.message"].sudo().search(
             [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
         )
-        self.assertTrue(any("refusee" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertTrue(
+            any("Systeme:" in (body or "") and "refusee" in (body or "").lower() for body in history_messages.mapped("body"))
+        )
         self.assertTrue(any("pas recevable" in (body or "").lower() for body in history_messages.mapped("body")))
         self.assertFalse(
             self.env["evm.payment_request"].with_user(foundation_user).search([("state", "=", "submitted"), ("id", "=", payment_request.id)])
@@ -939,9 +946,19 @@ class TestEvmPaymentRequest(TransactionCase):
         history_messages = self.env["mail.message"].sudo().search(
             [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
         )
-        self.assertTrue(any("validee" in (body or "").lower() for body in history_messages.mapped("body")))
+        public_messages = history_messages.filtered(lambda message: not message.subtype_id or not message.subtype_id.internal)
+        internal_messages = history_messages.filtered(lambda message: message.subtype_id and message.subtype_id.internal)
+        self.assertTrue(
+            any("Systeme:" in (body or "") and "validee" in (body or "").lower() for body in history_messages.mapped("body"))
+        )
         self.assertTrue(any("4" in (body or "") for body in history_messages.mapped("body")))
         self.assertTrue(any("paiement" in (body or "").lower() for body in history_messages.mapped("body")))
+        self.assertFalse(
+            any(payment_request.payment_id.display_name in (body or "") for body in public_messages.mapped("body"))
+        )
+        self.assertTrue(
+            any(payment_request.payment_id.display_name in (body or "") for body in internal_messages.mapped("body"))
+        )
 
     def test_validation_requires_foundation_user_submitted_state_and_available_authorized_sessions(self):
         self._create_internal_payment_request(
@@ -1218,12 +1235,43 @@ class TestEvmPaymentRequest(TransactionCase):
         case_history_messages = self.env["mail.message"].sudo().search(
             [("model", "=", "evm.case"), ("res_id", "=", self.accepted_case.id)]
         )
-        self.assertTrue(any("hors plateforme" in (body or "").lower() for body in history_messages.mapped("body")))
-        self.assertTrue(any("payee" in (body or "").lower() for body in history_messages.mapped("body")))
+        public_request_messages = history_messages.filtered(
+            lambda message: not message.subtype_id or not message.subtype_id.internal
+        )
+        internal_request_messages = history_messages.filtered(
+            lambda message: message.subtype_id and message.subtype_id.internal
+        )
+        public_case_messages = case_history_messages.filtered(
+            lambda message: not message.subtype_id or not message.subtype_id.internal
+        )
+        internal_case_messages = case_history_messages.filtered(
+            lambda message: message.subtype_id and message.subtype_id.internal
+        )
         self.assertTrue(
-            any("paiement hors plateforme confirme" in (body or "").lower() for body in case_history_messages.mapped("body"))
+            any("Systeme:" in (body or "") and "hors plateforme" in (body or "").lower() for body in history_messages.mapped("body"))
+        )
+        self.assertTrue(
+            any("Systeme:" in (body or "") and "payee" in (body or "").lower() for body in history_messages.mapped("body"))
+        )
+        self.assertTrue(
+            any(
+                "Systeme:" in (body or "") and "paiement hors plateforme confirme" in (body or "").lower()
+                for body in case_history_messages.mapped("body")
+            )
         )
         self.assertTrue(any(payment_request.name in (body or "") for body in case_history_messages.mapped("body")))
+        self.assertFalse(
+            any(payment_request.payment_id.display_name in (body or "") for body in public_request_messages.mapped("body"))
+        )
+        self.assertTrue(
+            any(payment_request.payment_id.display_name in (body or "") for body in internal_request_messages.mapped("body"))
+        )
+        self.assertFalse(
+            any(payment_request.payment_id.display_name in (body or "") for body in public_case_messages.mapped("body"))
+        )
+        self.assertTrue(
+            any(payment_request.payment_id.display_name in (body or "") for body in internal_case_messages.mapped("body"))
+        )
 
     def test_external_payment_confirmation_requires_foundation_user_validated_state_and_linked_payment(self):
         foundation_user = new_test_user(

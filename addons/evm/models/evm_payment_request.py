@@ -101,6 +101,7 @@ class EvmPaymentRequest(models.Model):
         string="Paiement Odoo",
         copy=False,
         readonly=True,
+        tracking=True,
     )
     currency_id = fields.Many2one(
         "res.currency",
@@ -154,6 +155,53 @@ class EvmPaymentRequest(models.Model):
             subtype_xmlid="mail.mt_comment",
         )
         return True
+
+    @api.model
+    def _format_system_message(self, body):
+        return _("Systeme: %(body)s", body=body)
+
+    def _post_system_message(self, body, subtype_xmlid="mail.mt_comment"):
+        self.ensure_one()
+        self.message_post(
+            body=self._format_system_message(body),
+            subtype_xmlid=subtype_xmlid,
+        )
+        return True
+
+    def _build_validation_message(self):
+        self.ensure_one()
+        return _(
+            "Demande de paiement validee par la fondation avec %(count)s seance(s) retenue(s). "
+            "Solde restant sur le dossier: %(remaining)s.",
+            count=self.sessions_count,
+            remaining=self.case_remaining_session_count,
+        )
+
+    @api.model
+    def _build_validation_internal_message(self, payment):
+        return _("Paiement Odoo brouillon lie: %(payment)s.", payment=payment.display_name)
+
+    def _build_external_payment_message(self):
+        self.ensure_one()
+        return _(
+            "Paiement confirme hors plateforme par la fondation. "
+            "La demande est marquee comme payee."
+        )
+
+    @api.model
+    def _build_external_payment_internal_message(self, payment):
+        return _("Paiement Odoo lie: %(payment)s.", payment=payment.display_name)
+
+    def _build_case_external_payment_message(self):
+        self.ensure_one()
+        return _(
+            "Paiement hors plateforme confirme pour la demande %(request)s.",
+            request=self.name,
+        )
+
+    @api.model
+    def _build_case_external_payment_internal_message(self, payment):
+        return _("Paiement Odoo lie: %(payment)s.", payment=payment.display_name)
 
     def _is_internal_manual_management_context(self):
         return (
@@ -546,8 +594,8 @@ class EvmPaymentRequest(models.Model):
                 values["completion_request_reason"] = False
             record.with_context(evm_allow_payment_request_workflow_write=True).write(values)
             record.flush_recordset(["state", "submitted_on", "completion_request_reason", "refusal_reason"])
-            record.message_post(
-                body=_(
+            record._post_system_message(
+                _(
                     "Demande de paiement completee puis soumise a nouveau par le patient avec %(count)s justificatif(s).",
                     count=attachment_count,
                 )
@@ -555,8 +603,7 @@ class EvmPaymentRequest(models.Model):
                 else _(
                     "Demande de paiement soumise par le patient avec %(count)s justificatif(s).",
                     count=attachment_count,
-                ),
-                subtype_xmlid="mail.mt_comment",
+                )
             )
         return True
 
@@ -576,12 +623,11 @@ class EvmPaymentRequest(models.Model):
                 }
             )
             record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
-            record.message_post(
+            record._post_system_message(
                 body=_(
                     "Demande retournee au patient pour complementation. Motif: %(reason)s",
                     reason=sanitized_reason,
-                ),
-                subtype_xmlid="mail.mt_comment",
+                )
             )
         return True
 
@@ -599,12 +645,11 @@ class EvmPaymentRequest(models.Model):
                 }
             )
             record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
-            record.message_post(
+            record._post_system_message(
                 body=_(
                     "Demande refusee par la fondation. Motif: %(reason)s",
                     reason=sanitized_reason,
-                ),
-                subtype_xmlid="mail.mt_comment",
+                )
             )
         return True
 
@@ -623,16 +668,10 @@ class EvmPaymentRequest(models.Model):
                 )
                 record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
                 payment = record._ensure_linked_draft_payment()
-                record.message_post(
-                    body=_(
-                        "Demande de paiement validee par la fondation avec %(count)s seance(s) retenue(s). "
-                        "Solde restant sur le dossier: %(remaining)s. "
-                        "Paiement Odoo brouillon lie: %(payment)s.",
-                        count=record.sessions_count,
-                        remaining=record.case_remaining_session_count,
-                        payment=payment.display_name,
-                    ),
-                    subtype_xmlid="mail.mt_comment",
+                record._post_system_message(record._build_validation_message())
+                record._post_system_message(
+                    record._build_validation_internal_message(payment),
+                    subtype_xmlid="mail.mt_note",
                 )
         return True
 
@@ -658,23 +697,15 @@ class EvmPaymentRequest(models.Model):
                 }
             )
             record.flush_recordset(["state", "completion_request_reason", "refusal_reason"])
-            record.message_post(
-                body=_(
-                    "Paiement confirme hors plateforme par la fondation. "
-                    "La demande est marquee comme payee. "
-                    "Paiement Odoo lie: %(payment)s.",
-                    payment=payment.display_name,
-                ),
-                subtype_xmlid="mail.mt_comment",
+            record._post_system_message(record._build_external_payment_message())
+            record._post_system_message(
+                record._build_external_payment_internal_message(payment),
+                subtype_xmlid="mail.mt_note",
             )
-            record.case_id.message_post(
-                body=_(
-                    "Paiement hors plateforme confirme pour la demande %(request)s. "
-                    "Paiement Odoo lie: %(payment)s.",
-                    request=record.name,
-                    payment=payment.display_name,
-                ),
-                subtype_xmlid="mail.mt_comment",
+            record.case_id._post_system_message(record._build_case_external_payment_message())
+            record.case_id._post_system_message(
+                record._build_case_external_payment_internal_message(payment),
+                subtype_xmlid="mail.mt_note",
             )
         return True
 
@@ -729,10 +760,7 @@ class EvmPaymentRequest(models.Model):
         records = super().create(vals_list)
         for record in records:
             state_label = dict(record._fields["state"].selection).get(record.state, record.state)
-            record.message_post(
-                body=_("Demande de paiement creee avec le statut %(state)s.", state=state_label),
-                subtype_xmlid="mail.mt_comment",
-            )
+            record._post_system_message(_("Demande de paiement creee avec le statut %(state)s.", state=state_label))
         return records
 
     def write(self, vals):

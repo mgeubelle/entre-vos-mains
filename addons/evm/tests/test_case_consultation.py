@@ -26,9 +26,11 @@ class TestEvmCaseConsultation(TransactionCase):
         self.assertIn("sessions_consumed", case_model._fields)
         self.assertIn("remaining_session_count", case_model._fields)
         self.assertIn("patient_display_name", case_model._fields)
+        self.assertTrue(case_model._fields["name"].tracking)
         self.assertTrue(case_model._fields["state"].tracking)
         self.assertTrue(case_model._fields["requested_session_count"].tracking)
         self.assertTrue(case_model._fields["authorized_session_count"].tracking)
+        self.assertTrue(case_model._fields["patient_user_id"].tracking)
 
         case = case_model.create(
             {
@@ -137,6 +139,7 @@ class TestEvmCaseConsultation(TransactionCase):
         )
 
         self.assertTrue(case.message_ids, "La creation du dossier doit produire une trace d'activite.")
+        self.assertIn("Systeme:", case.message_ids[0].body)
         self.assertIn("Dossier cree", case.message_ids[0].body)
         self.assertEqual(case.patient_display_name, "Dossier historise")
 
@@ -158,7 +161,7 @@ class TestEvmCaseConsultation(TransactionCase):
         self.assertEqual(case.requested_session_count, 14)
         bodies = case.message_ids.mapped("body")
         self.assertTrue(
-            any("Demande initiale soumise" in body for body in bodies),
+            any("Systeme:" in (body or "") and "Demande initiale soumise" in body for body in bodies),
             "La soumission doit laisser une trace exploitable dans l'historique.",
         )
 

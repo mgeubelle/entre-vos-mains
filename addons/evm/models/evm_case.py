@@ -10,7 +10,7 @@ class EvmCase(models.Model):
     _order = "create_date desc, id desc"
     _session_balance_counted_states = ("validated", "paid", "closed")
 
-    name = fields.Char(required=True, string="Nom")
+    name = fields.Char(required=True, string="Nom", tracking=True)
     state = fields.Selection(
         selection=[
             ("draft", "Brouillon"),
@@ -34,6 +34,7 @@ class EvmCase(models.Model):
         "res.users",
         index=True,
         string="Patient",
+        tracking=True,
     )
     patient_partner_id = fields.Many2one(
         "res.partner",
@@ -221,6 +222,18 @@ class EvmCase(models.Model):
         )
         return True
 
+    @api.model
+    def _format_system_message(self, body):
+        return _("Systeme: %(body)s", body=body)
+
+    def _post_system_message(self, body, subtype_xmlid="mail.mt_comment"):
+        self.ensure_one()
+        self.message_post(
+            body=self._format_system_message(body),
+            subtype_xmlid=subtype_xmlid,
+        )
+        return True
+
     def _build_decision_message(self, decision, annual_cap_remaining=None):
         self.ensure_one()
         if decision == "accepted":
@@ -378,7 +391,7 @@ class EvmCase(models.Model):
                     "patient_user_id": patient_user.id,
                 }
             )
-            record.message_post(body=record._build_patient_portal_message())
+            record._post_system_message(record._build_patient_portal_message())
         return True
 
     @api.model
@@ -424,7 +437,7 @@ class EvmCase(models.Model):
             vals["name"] = (vals.get("name") or vals.get("patient_name") or _("Nouveau dossier")).strip()
         records = super().create(vals_list)
         for record in records:
-            record.message_post(body=_("Dossier cree."))
+            record._post_system_message(_("Dossier cree."))
         return records
 
     def write(self, vals):
@@ -467,7 +480,7 @@ class EvmCase(models.Model):
                     "state": "pending",
                 }
             )
-            record.message_post(body=_("Demande initiale soumise par le kinesitherapeute."))
+            record._post_system_message(_("Demande initiale soumise par le kinesitherapeute."))
         return True
 
     def action_accept(self):
@@ -504,10 +517,10 @@ class EvmCase(models.Model):
                         "foundation_decision_date": today,
                     }
                 )
-                record.message_post(body=record._build_decision_message("accepted", remaining_after_accept))
+                record._post_system_message(record._build_decision_message("accepted", remaining_after_accept))
                 internal_message = record._build_decision_internal_message("accepted", remaining_after_accept)
                 if internal_message:
-                    record.message_post(body=internal_message, subtype_xmlid="mail.mt_note")
+                    record._post_system_message(internal_message, subtype_xmlid="mail.mt_note")
                 annual_cap_used += record.authorized_session_count
         return True
 
@@ -525,8 +538,8 @@ class EvmCase(models.Model):
                     "foundation_decision_date": today,
                 }
             )
-            record.message_post(body=record._build_decision_message("refused"))
+            record._post_system_message(record._build_decision_message("refused"))
             internal_message = record._build_decision_internal_message("refused")
             if internal_message:
-                record.message_post(body=internal_message, subtype_xmlid="mail.mt_note")
+                record._post_system_message(internal_message, subtype_xmlid="mail.mt_note")
         return True
