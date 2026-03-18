@@ -356,282 +356,362 @@
                             </div>
 
                             <div t-if="payment_requests" class="d-flex flex-column gap-3">
-                                <div t-foreach="payment_requests" t-as="payment_request" class="border rounded p-3 bg-white">
+                                <details
+                                    t-foreach="payment_requests"
+                                    t-as="payment_request"
+                                    t-att-open="'open' if payment_request.id in expanded_payment_request_ids else None"
+                                    class="border rounded bg-white shadow-sm"
+                                >
                                     <t t-set="request_form_values" t-value="update_form_values.get(payment_request.id, {})"/>
                                     <t t-set="request_update_errors" t-value="update_errors.get(payment_request.id, {})"/>
                                     <t t-set="request_history_messages" t-value="payment_request_history_messages.get(payment_request.id)"/>
-                                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                                        <div>
-                                            <div class="fw-semibold" t-esc="payment_request.name"/>
-                                            <div class="small text-muted">
-                                                Introduite le
-                                                <span t-field="payment_request.create_date" t-options="{'widget': 'date'}"/>
-                                            </div>
-                                        </div>
-                                        <span class="badge text-bg-light border">
-                                            <span t-field="payment_request.state"/>
-                                        </span>
-                                    </div>
-                                    <div
-                                        t-if="payment_request.state == 'to_complete'"
-                                        class="alert alert-warning border mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="fw-semibold mb-1">Action requise</p>
-                                        <p class="mb-0">
-                                            Cette demande a ete retournee par la fondation. Mettez a jour les informations ci-dessous,
-                                            ajoutez les justificatifs manquants puis resoumettez-la.
-                                        </p>
-                                    </div>
-                                    <div
-                                        t-if="payment_request.state == 'refused'"
-                                        class="alert alert-danger border mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="fw-semibold mb-1">Demande refusee</p>
-                                        <p class="mb-0">
-                                            Cette demande a ete refusee par la fondation. Elle reste visible pour consultation avec son historique.
-                                        </p>
-                                    </div>
-                                    <div class="row g-3 mt-1">
-                                        <div class="col-sm-6">
-                                            <p class="text-muted mb-1">Seances declarees</p>
-                                            <div class="fw-semibold" t-esc="payment_request.sessions_count"/>
-                                        </div>
-                                        <div class="col-sm-6">
-                                            <p class="text-muted mb-1">Montant</p>
-                                            <div class="fw-semibold">
-                                                <t t-if="payment_request.amount_total is not False">
-                                                    <span t-field="payment_request.amount_total"/>
-                                                </t>
-                                                <t t-else="">Non renseigne</t>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div
-                                        t-if="upload_flash and upload_flash.get('request_id') == payment_request.id"
-                                        class="alert alert-success mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <t t-esc="upload_flash.get('message')"/>
-                                    </div>
-                                    <div
-                                        t-if="submission_flash and submission_flash.get('request_id') == payment_request.id"
-                                        class="alert alert-success mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <t t-esc="submission_flash.get('message')"/>
-                                    </div>
-                                    <div
-                                        t-if="update_flash and update_flash.get('request_id') == payment_request.id"
-                                        class="alert alert-success mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <t t-esc="update_flash.get('message')"/>
-                                    </div>
-                                    <div
-                                        t-if="upload_errors.get(payment_request.id)"
-                                        class="alert alert-danger mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
-                                        <p class="mb-0" t-esc="upload_errors.get(payment_request.id)"/>
-                                    </div>
-                                    <div
-                                        t-if="submission_errors.get(payment_request.id)"
-                                        class="alert alert-danger mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
-                                        <p class="mb-0" t-esc="submission_errors.get(payment_request.id)"/>
-                                    </div>
-                                    <div
-                                        t-if="request_update_errors"
-                                        class="alert alert-danger mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
-                                        <p t-if="request_update_errors.get('form')" class="mb-0" t-esc="request_update_errors.get('form')"/>
-                                    </div>
-                                    <div
-                                        t-if="payment_request.state == 'to_complete' and payment_request.completion_request_reason"
-                                        class="alert alert-warning mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="fw-semibold mb-1">Motif de retour</p>
-                                        <p class="mb-0" t-esc="payment_request.completion_request_reason"/>
-                                    </div>
-                                    <div
-                                        t-if="payment_request.state == 'refused' and payment_request.refusal_reason"
-                                        class="alert alert-danger mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="fw-semibold mb-1">Motif du refus</p>
-                                        <p class="mb-0" t-esc="payment_request.refusal_reason"/>
-                                    </div>
-                                    <form
-                                        t-if="payment_request.state in ('draft', 'to_complete')"
-                                        t-att-action="'/my/evm/payment-requests/%s/update' % payment_request.id"
-                                        method="post"
-                                        class="row g-3 mt-1"
-                                    >
-                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                        <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
-                                        <input type="hidden" name="document_page" t-att-value="document_page"/>
-                                        <div class="col-12">
-                                            <label t-attf-for="payment_request_name_#{payment_request.id}" class="form-label">
-                                                Libelle de la demande
-                                            </label>
-                                            <input
-                                                t-attf-id="payment_request_name_#{payment_request.id}"
-                                                type="text"
-                                                name="name"
-                                                required="required"
-                                                t-attf-class="form-control #{'is-invalid' if request_update_errors.get('name') else ''}"
-                                                t-att-value="request_form_values.get('name', '')"
-                                            />
-                                            <div t-if="request_update_errors.get('name')" class="invalid-feedback d-block">
-                                                <t t-esc="request_update_errors.get('name')"/>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label t-attf-for="payment_request_sessions_#{payment_request.id}" class="form-label">
-                                                Nombre de seances concernees
-                                            </label>
-                                            <input
-                                                t-attf-id="payment_request_sessions_#{payment_request.id}"
-                                                type="number"
-                                                name="sessions_count"
-                                                min="1"
-                                                step="1"
-                                                inputmode="numeric"
-                                                required="required"
-                                                t-attf-class="form-control #{'is-invalid' if request_update_errors.get('sessions_count') else ''}"
-                                                t-att-value="request_form_values.get('sessions_count', '')"
-                                            />
-                                            <div t-if="request_update_errors.get('sessions_count')" class="invalid-feedback d-block">
-                                                <t t-esc="request_update_errors.get('sessions_count')"/>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label t-attf-for="payment_request_amount_#{payment_request.id}" class="form-label">
-                                                Montant total a payer
-                                            </label>
-                                            <input
-                                                t-attf-id="payment_request_amount_#{payment_request.id}"
-                                                type="number"
-                                                name="amount_total"
-                                                min="0"
-                                                step="0.01"
-                                                inputmode="decimal"
-                                                t-attf-class="form-control #{'is-invalid' if request_update_errors.get('amount_total') else ''}"
-                                                t-att-value="request_form_values.get('amount_total', '')"
-                                            />
-                                            <div class="form-text">Champ facultatif en V1.</div>
-                                            <div t-if="request_update_errors.get('amount_total')" class="invalid-feedback d-block">
-                                                <t t-esc="request_update_errors.get('amount_total')"/>
-                                            </div>
-                                        </div>
-                                        <div class="col-12 d-flex justify-content-end">
-                                            <button type="submit" class="btn btn-outline-secondary">Enregistrer les informations</button>
-                                        </div>
-                                    </form>
-                                    <form
-                                        t-if="payment_request.state in ('draft', 'to_complete')"
-                                        t-att-action="'/my/evm/payment-requests/%s/attachments/upload' % payment_request.id"
-                                        method="post"
-                                        enctype="multipart/form-data"
-                                        class="row g-3 mt-1"
-                                    >
-                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                        <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
-                                        <input type="hidden" name="document_page" t-att-value="document_page"/>
-                                        <div class="col-12">
-                                            <label t-attf-for="payment_request_documents_#{payment_request.id}" class="form-label">
-                                                Ajouter des justificatifs
-                                            </label>
-                                            <input
-                                                t-attf-id="payment_request_documents_#{payment_request.id}"
-                                                type="file"
-                                                name="documents"
-                                                multiple="multiple"
-                                                accept=".pdf,.jpg,.jpeg,.png"
-                                                class="form-control"
-                                                required="required"
-                                            />
-                                            <div class="form-text">Formats autorises : PDF, JPG, JPEG, PNG. Maximum 10 Mo par fichier.</div>
-                                        </div>
-                                        <div class="col-12 d-flex justify-content-end">
-                                            <button type="submit" class="btn btn-outline-primary">Ajouter des justificatifs</button>
-                                        </div>
-                                    </form>
-                                    <form
-                                        t-if="payment_request.state in ('draft', 'to_complete')"
-                                        t-att-action="'/my/evm/payment-requests/%s/submit' % payment_request.id"
-                                        method="post"
-                                        class="d-flex justify-content-end mt-3"
-                                    >
-                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                        <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
-                                        <input type="hidden" name="document_page" t-att-value="document_page"/>
-                                        <button type="submit" class="btn btn-primary">Soumettre la demande</button>
-                                    </form>
-                                    <div class="mt-3">
-                                        <h4 class="h6 mb-2">Historique des echanges</h4>
-                                        <div t-if="request_history_messages" class="d-flex flex-column gap-2">
-                                            <div t-foreach="request_history_messages" t-as="message" class="border rounded p-3 bg-light">
-                                                <div class="small text-muted mb-2">
-                                                    <span
-                                                        t-if="payment_request_history_author_names.get(payment_request.id, {}).get(message.id)"
-                                                        t-esc="payment_request_history_author_names.get(payment_request.id, {}).get(message.id)"
-                                                    />
-                                                    <span t-if="payment_request_history_author_names.get(payment_request.id, {}).get(message.id)"> - </span>
-                                                    <span t-field="message.date" t-options="{'widget': 'datetime'}"/>
+                                    <t t-set="request_documents" t-value="payment_request_document_entries.get(payment_request.id, [])"/>
+                                    <t t-set="request_documents_count" t-value="len(request_documents)"/>
+                                    <summary class="p-3 list-unstyled">
+                                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                            <div>
+                                                <div class="fw-semibold" t-esc="payment_request.name"/>
+                                                <div class="small text-muted">
+                                                    Introduite le
+                                                    <span t-field="payment_request.create_date" t-options="{'widget': 'date'}"/>
                                                 </div>
-                                                <div t-field="message.body"/>
+                                            </div>
+                                            <div class="d-flex flex-wrap align-items-center gap-2 justify-content-end">
+                                                <span class="badge text-bg-light border">
+                                                    <span t-field="payment_request.state"/>
+                                                </span>
+                                                <span class="badge text-bg-light border" t-esc="'%s seance(s)' % payment_request.sessions_count"/>
+                                                <span class="badge text-bg-light border" t-esc="'%s justificatif(s)' % request_documents_count"/>
                                             </div>
                                         </div>
-                                        <p t-else="" class="text-muted mb-0">Aucun echange n'est encore disponible pour cette demande.</p>
-                                    </div>
-                                    <div
-                                        t-if="payment_request_comment_flash and payment_request_comment_flash.get('request_id') == payment_request.id"
-                                        class="alert alert-success mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="mb-0" t-esc="payment_request_comment_flash.get('message')"/>
-                                    </div>
-                                    <div
-                                        t-if="payment_request_comment_errors.get(payment_request.id)"
-                                        class="alert alert-danger mt-3 mb-0"
-                                        role="alert"
-                                    >
-                                        <p class="mb-0" t-esc="payment_request_comment_errors.get(payment_request.id)"/>
-                                    </div>
-                                    <form
-                                        t-att-action="'/my/evm/payment-requests/%s/comments/post' % payment_request.id"
-                                        method="post"
-                                        class="mt-3"
-                                    >
-                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                        <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
-                                        <input type="hidden" name="document_page" t-att-value="document_page"/>
-                                        <div class="mb-3">
-                                            <label t-attf-for="payment_request_comment_#{payment_request.id}" class="form-label">
-                                                Ajouter un commentaire
-                                            </label>
-                                            <textarea
-                                                t-attf-id="payment_request_comment_#{payment_request.id}"
-                                                name="comment"
-                                                class="form-control"
-                                                rows="3"
-                                                required="required"
-                                            ><t t-esc="payment_request_comment_values.get(payment_request.id, '')"/></textarea>
+                                        <div class="row g-3 mt-1">
+                                            <div class="col-md-4">
+                                                <p class="text-muted mb-1">Montant</p>
+                                                <div class="fw-semibold">
+                                                    <t t-if="payment_request.amount_total is not False">
+                                                        <span t-field="payment_request.amount_total"/>
+                                                    </t>
+                                                    <t t-else="">Non renseigne</t>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <p class="text-muted mb-1">Modification</p>
+                                                <div class="fw-semibold">
+                                                    <t t-if="payment_request.state in ('draft', 'to_complete')">Modifiable</t>
+                                                    <t t-else="">Lecture seule</t>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <p class="text-muted mb-1">Detail</p>
+                                                <div class="fw-semibold">Ouvrir la demande</div>
+                                            </div>
                                         </div>
-                                        <div class="d-flex justify-content-end">
-                                            <button type="submit" class="btn btn-outline-secondary">Envoyer le commentaire</button>
+                                    </summary>
+                                    <div class="border-top p-3 pt-4">
+                                        <div
+                                            t-if="payment_request.state == 'to_complete'"
+                                            class="alert alert-warning border mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="fw-semibold mb-1">Action requise</p>
+                                            <p class="mb-0">
+                                                Cette demande a ete retournee par la fondation. Mettez a jour les informations ci-dessous,
+                                                ajoutez les justificatifs manquants puis resoumettez-la.
+                                            </p>
                                         </div>
-                                    </form>
-                                </div>
+                                        <div
+                                            t-if="payment_request.state == 'refused'"
+                                            class="alert alert-danger border mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="fw-semibold mb-1">Demande refusee</p>
+                                            <p class="mb-0">
+                                                Cette demande a ete refusee par la fondation. Elle reste visible pour consultation avec son historique.
+                                            </p>
+                                        </div>
+                                        <div
+                                            t-if="upload_flash and upload_flash.get('request_id') == payment_request.id"
+                                            class="alert alert-success mb-3"
+                                            role="alert"
+                                        >
+                                            <t t-esc="upload_flash.get('message')"/>
+                                        </div>
+                                        <div
+                                            t-if="submission_flash and submission_flash.get('request_id') == payment_request.id"
+                                            class="alert alert-success mb-3"
+                                            role="alert"
+                                        >
+                                            <t t-esc="submission_flash.get('message')"/>
+                                        </div>
+                                        <div
+                                            t-if="update_flash and update_flash.get('request_id') == payment_request.id"
+                                            class="alert alert-success mb-3"
+                                            role="alert"
+                                        >
+                                            <t t-esc="update_flash.get('message')"/>
+                                        </div>
+                                        <div
+                                            t-if="upload_errors.get(payment_request.id)"
+                                            class="alert alert-danger mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
+                                            <p class="mb-0" t-esc="upload_errors.get(payment_request.id)"/>
+                                        </div>
+                                        <div
+                                            t-if="submission_errors.get(payment_request.id)"
+                                            class="alert alert-danger mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
+                                            <p class="mb-0" t-esc="submission_errors.get(payment_request.id)"/>
+                                        </div>
+                                        <div
+                                            t-if="request_update_errors"
+                                            class="alert alert-danger mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="mb-2">Veuillez corriger les erreurs ci-dessous.</p>
+                                            <p t-if="request_update_errors.get('form')" class="mb-0" t-esc="request_update_errors.get('form')"/>
+                                        </div>
+                                        <div
+                                            t-if="payment_request.state == 'to_complete' and payment_request.completion_request_reason"
+                                            class="alert alert-warning mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="fw-semibold mb-1">Motif de retour</p>
+                                            <p class="mb-0" t-esc="payment_request.completion_request_reason"/>
+                                        </div>
+                                        <div
+                                            t-if="payment_request.state == 'refused' and payment_request.refusal_reason"
+                                            class="alert alert-danger mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="fw-semibold mb-1">Motif du refus</p>
+                                            <p class="mb-0" t-esc="payment_request.refusal_reason"/>
+                                        </div>
+
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-lg-6">
+                                                <div class="rounded border bg-light p-3 h-100">
+                                                    <h4 class="h6 mb-2">Informations de la demande</h4>
+                                                    <div class="row g-3">
+                                                        <div class="col-sm-6">
+                                                            <p class="text-muted mb-1">Seances declarees</p>
+                                                            <div class="fw-semibold" t-esc="payment_request.sessions_count"/>
+                                                        </div>
+                                                        <div class="col-sm-6">
+                                                            <p class="text-muted mb-1">Montant</p>
+                                                            <div class="fw-semibold">
+                                                                <t t-if="payment_request.amount_total is not False">
+                                                                    <span t-field="payment_request.amount_total"/>
+                                                                </t>
+                                                                <t t-else="">Non renseigne</t>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-6">
+                                                <div class="rounded border bg-light p-3 h-100">
+                                                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
+                                                        <div>
+                                                            <h4 class="h6 mb-1">Justificatifs de la demande</h4>
+                                                            <p class="text-muted mb-0">Associes uniquement a cette demande de paiement.</p>
+                                                        </div>
+                                                        <span class="badge text-bg-light border" t-esc="'%s piece(s)' % request_documents_count"/>
+                                                    </div>
+                                                    <div t-if="request_documents" class="d-flex flex-column gap-2">
+                                                        <div t-foreach="request_documents" t-as="document_entry" class="border rounded bg-white p-3">
+                                                            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                                                <div>
+                                                                    <div class="fw-semibold" t-esc="document_entry['attachment'].name"/>
+                                                                    <div class="small text-muted">
+                                                                        Ajoute le
+                                                                        <span t-field="document_entry['attachment'].create_date" t-options="{'widget': 'datetime'}"/>
+                                                                    </div>
+                                                                </div>
+                                                                <a
+                                                                    class="btn btn-sm btn-outline-primary"
+                                                                    t-att-aria-label="document_entry['download_label']"
+                                                                    t-att-href="document_entry['download_url']"
+                                                                >
+                                                                    Telecharger
+                                                                </a>
+                                                            </div>
+                                                            <div class="small text-muted mt-2" t-esc="document_entry['type_label']"/>
+                                                        </div>
+                                                    </div>
+                                                    <p t-else="" class="text-muted mb-0">Aucun justificatif n'est encore associe a cette demande.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <form
+                                            t-if="payment_request.state in ('draft', 'to_complete')"
+                                            t-att-action="'/my/evm/payment-requests/%s/update' % payment_request.id"
+                                            method="post"
+                                            class="row g-3"
+                                        >
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
+                                            <input type="hidden" name="document_page" t-att-value="document_page"/>
+                                            <div class="col-12">
+                                                <label t-attf-for="payment_request_name_#{payment_request.id}" class="form-label">
+                                                    Libelle de la demande
+                                                </label>
+                                                <input
+                                                    t-attf-id="payment_request_name_#{payment_request.id}"
+                                                    type="text"
+                                                    name="name"
+                                                    required="required"
+                                                    t-attf-class="form-control #{'is-invalid' if request_update_errors.get('name') else ''}"
+                                                    t-att-value="request_form_values.get('name', '')"
+                                                />
+                                                <div t-if="request_update_errors.get('name')" class="invalid-feedback d-block">
+                                                    <t t-esc="request_update_errors.get('name')"/>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label t-attf-for="payment_request_sessions_#{payment_request.id}" class="form-label">
+                                                    Nombre de seances concernees
+                                                </label>
+                                                <input
+                                                    t-attf-id="payment_request_sessions_#{payment_request.id}"
+                                                    type="number"
+                                                    name="sessions_count"
+                                                    min="1"
+                                                    step="1"
+                                                    inputmode="numeric"
+                                                    required="required"
+                                                    t-attf-class="form-control #{'is-invalid' if request_update_errors.get('sessions_count') else ''}"
+                                                    t-att-value="request_form_values.get('sessions_count', '')"
+                                                />
+                                                <div t-if="request_update_errors.get('sessions_count')" class="invalid-feedback d-block">
+                                                    <t t-esc="request_update_errors.get('sessions_count')"/>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label t-attf-for="payment_request_amount_#{payment_request.id}" class="form-label">
+                                                    Montant total a payer
+                                                </label>
+                                                <input
+                                                    t-attf-id="payment_request_amount_#{payment_request.id}"
+                                                    type="number"
+                                                    name="amount_total"
+                                                    min="0"
+                                                    step="0.01"
+                                                    inputmode="decimal"
+                                                    t-attf-class="form-control #{'is-invalid' if request_update_errors.get('amount_total') else ''}"
+                                                    t-att-value="request_form_values.get('amount_total', '')"
+                                                />
+                                                <div class="form-text">Champ facultatif en V1.</div>
+                                                <div t-if="request_update_errors.get('amount_total')" class="invalid-feedback d-block">
+                                                    <t t-esc="request_update_errors.get('amount_total')"/>
+                                                </div>
+                                            </div>
+                                            <div class="col-12 d-flex justify-content-end">
+                                                <button type="submit" class="btn btn-outline-secondary">Enregistrer les informations</button>
+                                            </div>
+                                        </form>
+                                        <form
+                                            t-if="payment_request.state in ('draft', 'to_complete')"
+                                            t-att-action="'/my/evm/payment-requests/%s/attachments/upload' % payment_request.id"
+                                            method="post"
+                                            enctype="multipart/form-data"
+                                            class="row g-3 mt-1"
+                                        >
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
+                                            <input type="hidden" name="document_page" t-att-value="document_page"/>
+                                            <div class="col-12">
+                                                <label t-attf-for="payment_request_documents_#{payment_request.id}" class="form-label">
+                                                    Ajouter des justificatifs
+                                                </label>
+                                                <input
+                                                    t-attf-id="payment_request_documents_#{payment_request.id}"
+                                                    type="file"
+                                                    name="documents"
+                                                    multiple="multiple"
+                                                    accept=".pdf,.jpg,.jpeg,.png"
+                                                    class="form-control"
+                                                    required="required"
+                                                />
+                                                <div class="form-text">Formats autorises : PDF, JPG, JPEG, PNG. Maximum 10 Mo par fichier.</div>
+                                            </div>
+                                            <div class="col-12 d-flex justify-content-end">
+                                                <button type="submit" class="btn btn-outline-primary">Ajouter des justificatifs</button>
+                                            </div>
+                                        </form>
+                                        <form
+                                            t-if="payment_request.state in ('draft', 'to_complete')"
+                                            t-att-action="'/my/evm/payment-requests/%s/submit' % payment_request.id"
+                                            method="post"
+                                            class="d-flex justify-content-end mt-3"
+                                        >
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
+                                            <input type="hidden" name="document_page" t-att-value="document_page"/>
+                                            <button type="submit" class="btn btn-primary">Soumettre la demande</button>
+                                        </form>
+
+                                        <div class="mt-4">
+                                            <h4 class="h6 mb-2">Historique des echanges</h4>
+                                            <div t-if="request_history_messages" class="d-flex flex-column gap-2">
+                                                <div t-foreach="request_history_messages" t-as="message" class="border rounded p-3 bg-light">
+                                                    <div class="small text-muted mb-2">
+                                                        <span
+                                                            t-if="payment_request_history_author_names.get(payment_request.id, {}).get(message.id)"
+                                                            t-esc="payment_request_history_author_names.get(payment_request.id, {}).get(message.id)"
+                                                        />
+                                                        <span t-if="payment_request_history_author_names.get(payment_request.id, {}).get(message.id)"> - </span>
+                                                        <span t-field="message.date" t-options="{'widget': 'datetime'}"/>
+                                                    </div>
+                                                    <div t-field="message.body"/>
+                                                </div>
+                                            </div>
+                                            <p t-else="" class="text-muted mb-0">Aucun echange n'est encore disponible pour cette demande.</p>
+                                        </div>
+                                        <div
+                                            t-if="payment_request_comment_flash and payment_request_comment_flash.get('request_id') == payment_request.id"
+                                            class="alert alert-success mt-3 mb-0"
+                                            role="alert"
+                                        >
+                                            <p class="mb-0" t-esc="payment_request_comment_flash.get('message')"/>
+                                        </div>
+                                        <div
+                                            t-if="payment_request_comment_errors.get(payment_request.id)"
+                                            class="alert alert-danger mt-3 mb-0"
+                                            role="alert"
+                                        >
+                                            <p class="mb-0" t-esc="payment_request_comment_errors.get(payment_request.id)"/>
+                                        </div>
+                                        <form
+                                            t-att-action="'/my/evm/payment-requests/%s/comments/post' % payment_request.id"
+                                            method="post"
+                                            class="mt-3"
+                                        >
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
+                                            <input type="hidden" name="document_page" t-att-value="document_page"/>
+                                            <div class="mb-3">
+                                                <label t-attf-for="payment_request_comment_#{payment_request.id}" class="form-label">
+                                                    Ajouter un commentaire
+                                                </label>
+                                                <textarea
+                                                    t-attf-id="payment_request_comment_#{payment_request.id}"
+                                                    name="comment"
+                                                    class="form-control"
+                                                    rows="3"
+                                                    required="required"
+                                                ><t t-esc="payment_request_comment_values.get(payment_request.id, '')"/></textarea>
+                                            </div>
+                                            <div class="d-flex justify-content-end">
+                                                <button type="submit" class="btn btn-outline-secondary">Envoyer le commentaire</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </details>
                             </div>
                             <div t-if="pager and pager.get('page_count', 0) &gt; 1" class="o_portal_pager d-flex justify-content-center my-3">
                                 <t t-call="portal.pager"/>
@@ -818,7 +898,7 @@
                                 <p t-if="errors.get('form')" class="mb-0" t-esc="errors.get('form')"/>
                             </div>
 
-                            <form t-att-action="'/my/evm/cases/%s/payment-requests/create' % case.id" method="post" class="row g-3">
+                            <form t-att-action="'/my/evm/cases/%s/payment-requests/create' % case.id" method="post" enctype="multipart/form-data" class="row g-3">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
 
                                 <div class="col-12">
@@ -857,8 +937,29 @@
                                     </div>
                                 </div>
 
-                                <div class="col-12 d-flex justify-content-end pt-2">
-                                    <button type="submit" class="btn btn-primary">Creer la demande</button>
+                                <div class="col-12">
+                                    <label for="documents" class="form-label">Justificatifs</label>
+                                    <input
+                                        id="documents"
+                                        type="file"
+                                        name="documents"
+                                        multiple="multiple"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        t-attf-class="form-control #{'is-invalid' if errors.get('documents') else ''}"
+                                    />
+                                    <div class="form-text">Formats autorises : PDF, JPG, JPEG, PNG. Maximum 10 Mo par fichier.</div>
+                                    <div t-if="errors.get('documents')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('documents')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12 d-flex justify-content-end gap-2 pt-2 flex-wrap">
+                                    <button type="submit" name="submission_mode" value="draft" class="btn btn-outline-secondary">
+                                        Enregistrer en brouillon
+                                    </button>
+                                    <button type="submit" name="submission_mode" value="submit" class="btn btn-primary">
+                                        Creer et soumettre
+                                    </button>
                                 </div>
                             </form>
                         </div>

@@ -199,6 +199,87 @@ class EvmCustomerPortal(CustomerPortal):
             return _("Image")
         return _("Fichier")
 
+    def _build_payment_request_document_entry(self, attachment, payment_request):
+        return {
+            "attachment": attachment,
+            "payment_request": payment_request,
+            "download_url": f"/web/content/{attachment.id}?download=true",
+            "download_label": _(
+                "Telecharger %(attachment)s pour %(payment_request)s",
+                attachment=attachment.name,
+                payment_request=payment_request.name,
+            ),
+            "type_label": self._get_attachment_type_label(attachment),
+        }
+
+    def _get_payment_request_document_entries_map(self, payment_requests):
+        if not payment_requests:
+            return {}
+
+        payment_request_by_id = {payment_request.id: payment_request for payment_request in payment_requests}
+        attachments = (
+            request.env["ir.attachment"]
+            .sudo()
+            .search(
+                [
+                    ("res_model", "=", "evm.payment_request"),
+                    ("res_id", "in", payment_requests.ids),
+                    ("res_field", "=", False),
+                    ("type", "=", "binary"),
+                    ("evm_patient_visible", "=", True),
+                ],
+                order="create_date desc, id desc",
+            )
+        )
+        document_entries = {payment_request_id: [] for payment_request_id in payment_request_by_id}
+        for attachment in attachments:
+            payment_request = payment_request_by_id.get(attachment.res_id)
+            if payment_request:
+                document_entries[attachment.res_id].append(
+                    self._build_payment_request_document_entry(attachment, payment_request)
+                )
+        return document_entries
+
+    def _collect_payment_request_expanded_ids(
+        self,
+        payment_requests,
+        upload_errors=None,
+        submission_errors=None,
+        update_errors=None,
+        payment_request_comment_errors=None,
+        upload_flash=None,
+        submission_flash=None,
+        update_flash=None,
+        payment_request_comment_flash=None,
+    ):
+        expanded_ids = set()
+        for errors in (
+            upload_errors or {},
+            submission_errors or {},
+            update_errors or {},
+            payment_request_comment_errors or {},
+        ):
+            expanded_ids.update(errors.keys())
+        for flash_payload in (
+            upload_flash or {},
+            submission_flash or {},
+            update_flash or {},
+            payment_request_comment_flash or {},
+        ):
+            if flash_payload.get("request_id"):
+                expanded_ids.add(flash_payload["request_id"])
+        if not expanded_ids and payment_requests:
+            expanded_ids.add(payment_requests[:1].id)
+        return expanded_ids
+
+    def _map_payment_request_creation_error(self, error_message):
+        if any(
+            keyword in (error_message or "")
+            for keyword in ("justificatif", "fichier", "Formats autorises", "10 Mo")
+        ):
+            return {"documents": error_message}
+        return {"form": error_message}
+
     def _format_payment_request_amount_total(self, amount_total):
         if amount_total in (False, None):
             return ""
@@ -245,17 +326,7 @@ class EvmCustomerPortal(CustomerPortal):
             offset=pager["offset"],
         )
         return [
-            {
-                "attachment": attachment,
-                "payment_request": payment_request_by_id[attachment.res_id],
-                "download_url": f"/web/content/{attachment.id}?download=true",
-                "download_label": _(
-                    "Telecharger %(attachment)s pour %(payment_request)s",
-                    attachment=attachment.name,
-                    payment_request=payment_request_by_id[attachment.res_id].name,
-                ),
-                "type_label": self._get_attachment_type_label(attachment),
-            }
+            self._build_payment_request_document_entry(attachment, payment_request_by_id[attachment.res_id])
             for attachment in attachments
             if attachment.res_id in payment_request_by_id
         ], pager
@@ -355,6 +426,7 @@ class EvmCustomerPortal(CustomerPortal):
             page=document_page,
             url_args={"document_page": document_page} if document_page > 1 else {},
         )
+        payment_request_document_entries = self._get_payment_request_document_entries_map(payment_requests)
         values = self._prepare_portal_layout_values()
         update_form_values_by_request = {
             payment_request.id: self._build_payment_request_form_values(
@@ -375,17 +447,35 @@ class EvmCustomerPortal(CustomerPortal):
                 for payment_request in payment_requests
             )
         }
+        case_comment_flash = self._pop_case_comment_flash(case_sudo.id)
+        payment_request_comment_flash = self._pop_payment_request_comment_flash(case_sudo.id)
+        update_flash = self._pop_payment_request_update_flash(case_sudo.id)
+        upload_flash = self._pop_payment_request_upload_flash(case_sudo.id)
+        submission_flash = self._pop_payment_request_submission_flash(case_sudo.id)
+        expanded_payment_request_ids = self._collect_payment_request_expanded_ids(
+            payment_requests,
+            upload_errors=upload_errors,
+            submission_errors=submission_errors,
+            update_errors=update_errors,
+            payment_request_comment_errors=payment_request_comment_errors,
+            upload_flash=upload_flash,
+            submission_flash=submission_flash,
+            update_flash=update_flash,
+            payment_request_comment_flash=payment_request_comment_flash,
+        )
         values.update(
             {
                 "case": case_sudo,
                 "case_history_messages": self._get_allowed_history_messages(case_sudo),
                 "case_history_author_names": self._get_history_author_names(self._get_allowed_history_messages(case_sudo)),
                 "case_comment_error": case_comment_error,
-                "case_comment_flash": self._pop_case_comment_flash(case_sudo.id),
+                "case_comment_flash": case_comment_flash,
                 "case_comment_value": case_comment_value,
                 "payment_requests": payment_requests,
+                "payment_request_document_entries": payment_request_document_entries,
+                "expanded_payment_request_ids": expanded_payment_request_ids,
                 "payment_request_comment_errors": payment_request_comment_errors or {},
-                "payment_request_comment_flash": self._pop_payment_request_comment_flash(case_sudo.id),
+                "payment_request_comment_flash": payment_request_comment_flash,
                 "payment_request_comment_values": payment_request_comment_values or {},
                 "payment_request_history_messages": payment_request_history_messages,
                 "payment_request_history_author_names": payment_request_history_author_names,
@@ -397,12 +487,12 @@ class EvmCustomerPortal(CustomerPortal):
                 "payment_request_page": page,
                 "document_page": document_page,
                 "update_errors": update_errors or {},
-                "update_flash": self._pop_payment_request_update_flash(case_sudo.id),
+                "update_flash": update_flash,
                 "update_form_values": update_form_values_by_request,
                 "upload_errors": upload_errors or {},
-                "upload_flash": self._pop_payment_request_upload_flash(case_sudo.id),
+                "upload_flash": upload_flash,
                 "submission_errors": submission_errors or {},
-                "submission_flash": self._pop_payment_request_submission_flash(case_sudo.id),
+                "submission_flash": submission_flash,
             }
         )
         return values
@@ -624,11 +714,17 @@ class EvmCustomerPortal(CustomerPortal):
             return request.redirect("/my")
 
         payment_request_model = request.env["evm.payment_request"]
+        submission_mode = (post.get("submission_mode") or "draft").strip()
+        submit_after_creation = submission_mode == "submit"
         form_values = {
             "sessions_count": (post.get("sessions_count") or "").strip(),
             "amount_total": (post.get("amount_total") or "").strip(),
+            "submission_mode": submission_mode,
         }
+        uploaded_files = request.httprequest.files.getlist("documents")
         cleaned_values, errors = payment_request_model.validate_portal_creation_data(form_values)
+        if submit_after_creation and not any((getattr(uploaded_file, "filename", "") or "").strip() for uploaded_file in uploaded_files):
+            errors["documents"] = _("Ajoutez au moins un justificatif avant de soumettre la demande.")
         if errors:
             return request.render(
                 "evm.evm_portal_my_payment_request_create",
@@ -636,18 +732,30 @@ class EvmCustomerPortal(CustomerPortal):
             )
 
         try:
-            payment_request = payment_request_model.create(
-                {
-                    "case_id": case_sudo.id,
-                    **cleaned_values,
-                }
-            )
+            with request.env.cr.savepoint():
+                payment_request = payment_request_model.create(
+                    {
+                        "case_id": case_sudo.id,
+                        **cleaned_values,
+                    }
+                )
+                if uploaded_files:
+                    payment_request.portal_upload_attachments(uploaded_files)
+                if submit_after_creation:
+                    payment_request.action_submit()
         except (AccessError, ValidationError) as exc:
-            errors = {"form": exc.args[0]}
+            errors = self._map_payment_request_creation_error(exc.args[0])
             return request.render(
                 "evm.evm_portal_my_payment_request_create",
                 self._prepare_payment_request_creation_values(case_sudo, form_values=form_values, errors=errors),
             )
+        if submit_after_creation:
+            self._set_payment_request_submission_flash(
+                case_sudo.id,
+                payment_request.id,
+                _("La demande de paiement a ete creee puis soumise a la fondation."),
+            )
+            return request.redirect(f"/my/evm/cases/{case_sudo.id}")
         self._set_created_payment_request_flash(case_sudo.id, payment_request.id)
         return request.redirect(f"/my/evm/cases/{case_sudo.id}/payment-requests/new")
 

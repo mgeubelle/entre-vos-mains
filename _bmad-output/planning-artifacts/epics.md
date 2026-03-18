@@ -375,6 +375,29 @@ So that la fondation puisse commencer son instruction.
 **Then** la soumission est refusee
 **And** les erreurs sont presentees de facon simple et exploitable
 
+### Story 2.6: Ameliorer la lisibilite du detail dossier patient et la creation-soumission des demandes
+
+As a patient,
+I want un detail de dossier plus lisible et un parcours de creation de demande plus direct,
+So that je puisse comprendre rapidement mes demandes, retrouver les justificatifs associes et soumettre une nouvelle demande sans friction.
+
+**Acceptance Criteria:**
+
+**Given** un dossier patient avec plusieurs demandes de paiement
+**When** le patient ouvre son detail de dossier
+**Then** les demandes sont presentees sous forme de cartes repliables avec un resume clair
+**And** le detail complet de chaque demande reste accessible sans surcharger l'ecran
+
+**Given** une demande de paiement avec des justificatifs
+**When** le patient consulte son dossier
+**Then** il voit les justificatifs dans la demande concernee
+**And** la vue agregee "Documents du dossier" reste disponible pour l'historique transverse
+
+**Given** un patient qui cree une nouvelle demande
+**When** il choisit de creer puis soumettre dans le meme parcours
+**Then** la demande, les justificatifs et la soumission sont traites dans un seul flux coherent
+**And** aucune demande partielle n'est conservee si une erreur survient
+
 ## Epic 3: Instruire les demandes et suivre les paiements
 
 La fondation peut examiner les demandes de paiement, demander des complements, valider les montants, suivre les seances consommees et tracer le paiement dans Odoo.

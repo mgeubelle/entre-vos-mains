@@ -206,6 +206,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
 
         self.assertEqual(detail_response.status_code, 200)
+        self.assertIn("Justificatifs de la demande", detail_response.text)
         self.assertIn("Documents du dossier", detail_response.text)
         self.assertIn("Historique documentaire", detail_response.text)
         self.assertIn("facture-portail.pdf", detail_response.text)
@@ -629,7 +630,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertEqual(first_page_response.status_code, 200)
         self.assertEqual(second_page_response.status_code, 200)
         self.assertIn("facture-pagination-24.pdf", first_page_response.text)
-        self.assertNotIn("facture-pagination-00.pdf", first_page_response.text)
+        self.assertIn("Justificatifs de la demande", first_page_response.text)
         self.assertIn("facture-pagination-00.pdf", second_page_response.text)
 
     def test_patient_portal_case_detail_shows_session_balance_from_validated_requests_only(self):
@@ -692,6 +693,9 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn(self.accepted_case.name, form_response.text)
         self.assertIn("Nombre de seances concernees", form_response.text)
         self.assertIn("Montant total a payer", form_response.text)
+        self.assertIn("Justificatifs", form_response.text)
+        self.assertIn("Enregistrer en brouillon", form_response.text)
+        self.assertIn("Creer et soumettre", form_response.text)
 
         submit_response = self.url_open(
             f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
@@ -769,6 +773,80 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertEqual(len(created_requests), 2)
         self.assertEqual(set(created_requests.mapped("sessions_count")), {4, 2})
         self.assertEqual(set(created_requests.mapped("state")), {"draft"})
+
+    def test_patient_portal_payment_request_form_can_create_attach_and_submit_request(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        form_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/payment-requests/new")
+
+        submit_response = self.url_open(
+            f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
+            data={
+                "csrf_token": self._extract_csrf_token(form_response.text),
+                "sessions_count": "3",
+                "amount_total": "150.00",
+                "submission_mode": "submit",
+            },
+            files=[("documents", ("facture-creation.pdf", BytesIO(MINIMAL_PDF), "application/pdf"))],
+            allow_redirects=False,
+        )
+
+        self.assertEqual(submit_response.status_code, 303)
+        self.assertRegex(submit_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+
+        payment_request = self.env["evm.payment_request"].sudo().search(
+            [
+                ("case_id", "=", self.accepted_case.id),
+                ("patient_user_id", "=", self.patient_user.id),
+                ("sessions_count", "=", 3),
+                ("amount_total", "=", 150.0),
+            ],
+            limit=1,
+        )
+        self.assertTrue(payment_request)
+        self.assertEqual(payment_request.state, "submitted")
+        self.assertTrue(
+            self.env["ir.attachment"].sudo().search_count(
+                [
+                    ("res_model", "=", "evm.payment_request"),
+                    ("res_id", "=", payment_request.id),
+                    ("name", "=", "facture-creation.pdf"),
+                ]
+            )
+        )
+
+        success_response = self.url_open(submit_response.headers["Location"])
+        response_text = html.unescape(success_response.text)
+        self.assertIn("La demande de paiement a ete creee puis soumise a la fondation.", response_text)
+        self.assertIn("facture-creation.pdf", response_text)
+
+    def test_patient_portal_payment_request_form_rejects_direct_submission_without_documents(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        form_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/payment-requests/new")
+        response = self.url_open(
+            f"/my/evm/cases/{self.accepted_case.id}/payment-requests/create",
+            data={
+                "csrf_token": self._extract_csrf_token(form_response.text),
+                "sessions_count": "2",
+                "amount_total": "45",
+                "submission_mode": "submit",
+            },
+        )
+        response_text = html.unescape(response.text)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ajoutez au moins un justificatif avant de soumettre la demande.", response_text)
+        self.assertFalse(
+            self.env["evm.payment_request"].sudo().search(
+                [
+                    ("case_id", "=", self.accepted_case.id),
+                    ("patient_user_id", "=", self.patient_user.id),
+                    ("sessions_count", "=", 2),
+                    ("amount_total", "=", 45.0),
+                ]
+            )
+        )
 
     def test_patient_portal_payment_request_form_shows_french_errors_and_preserves_data(self):
         self.authenticate(self.patient_login, self.patient_password)
