@@ -142,6 +142,32 @@ class TestEvmPaymentRequest(TransactionCase):
     def _build_payment_reference(self, payment_request_name, case_name=None):
         return f"Demande {payment_request_name} - {case_name or self.accepted_case.name}"
 
+    def _capture_mail_ids(self):
+        return set(self.env["mail.mail"].sudo().search([]).ids)
+
+    def _capture_notification_ids(self):
+        return set(self.env["mail.message"].sudo().search([("message_type", "=", "notification")]).ids)
+
+    def _capture_mail_notification_ids(self):
+        return set(self.env["mail.notification"].sudo().search([]).ids)
+
+    def _get_new_mails(self, before_ids):
+        return self.env["mail.mail"].sudo().browse(
+            sorted(set(self.env["mail.mail"].sudo().search([]).ids) - before_ids)
+        )
+
+    def _get_new_notifications(self, before_ids):
+        return self.env["mail.message"].sudo().browse(
+            sorted(
+                set(self.env["mail.message"].sudo().search([("message_type", "=", "notification")]).ids) - before_ids
+            )
+        )
+
+    def _get_new_mail_notifications(self, before_ids):
+        return self.env["mail.notification"].sudo().browse(
+            sorted(set(self.env["mail.notification"].sudo().search([]).ids) - before_ids)
+        )
+
     def test_payment_request_creation_rejects_invalid_patient_input(self):
         with self.assertRaisesRegex(ValidationError, "seances"):
             self.env["evm.payment_request"].with_user(self.patient_user).create(
@@ -482,6 +508,64 @@ class TestEvmPaymentRequest(TransactionCase):
             payment_request,
         )
 
+    def test_submission_notifies_foundation_only_with_internal_notification(self):
+        self.patient_user.partner_id.write({"email": "patient.payment.request@example.com"})
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation.payment.request.notifications@example.com",
+            groups="evm.group_evm_fondation",
+        )
+        foundation_user.write({"notification_type": "inbox"})
+        foundation_user.partner_id.write({"email": "fondation.payment.request.notifications@example.com"})
+        observer_user = new_test_user(
+            self.env,
+            login="observer.payment.request.notifications@example.com",
+            groups="base.group_user",
+        )
+        observer_user.write({"notification_type": "inbox"})
+        observer_user.partner_id.write({"email": "observer.payment.request.notifications@example.com"})
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "name": "Demande notification soumission",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "amount_total": 80.0,
+            }
+        )
+        payment_request.with_user(self.patient_user).portal_upload_attachments(
+            [
+                FileStorage(
+                    stream=BytesIO(MINIMAL_PDF),
+                    filename="facture-notification-soumission.pdf",
+                    content_type="application/pdf",
+                )
+            ]
+        )
+        mail_ids_before = self._capture_mail_ids()
+        notification_ids_before = self._capture_notification_ids()
+
+        payment_request.with_user(self.patient_user).action_submit()
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - demande de paiement soumise : {payment_request.name}"
+        )
+        inbox_notifications = self._get_new_notifications(notification_ids_before).filtered(
+            lambda message: message.subject == f"Entre Vos Mains - demande de paiement soumise : {payment_request.name}"
+        )
+
+        self.assertTrue(notification_mails or inbox_notifications)
+        if notification_mails:
+            self.assertFalse(notification_mails.filtered(lambda mail: self.patient_user.partner_id.email in (mail.email_to or "")))
+            self.assertFalse(notification_mails.filtered(lambda mail: observer_user.partner_id.email in (mail.email_to or "")))
+            self.assertIn(payment_request.name, notification_mails.body_html)
+            self.assertIn("Soumise", notification_mails.body_html)
+        if inbox_notifications:
+            self.assertEqual(inbox_notifications.partner_ids, foundation_user.partner_id)
+            self.assertNotIn(self.patient_user.partner_id, inbox_notifications.partner_ids)
+            self.assertNotIn(observer_user.partner_id, inbox_notifications.partner_ids)
+            self.assertIn(payment_request.name, inbox_notifications.body)
+            self.assertIn("Soumise", inbox_notifications.body)
+
     def test_authorized_users_can_post_comments_on_case_and_request(self):
         foundation_user = new_test_user(
             self.env,
@@ -581,6 +665,39 @@ class TestEvmPaymentRequest(TransactionCase):
             any("Systeme:" in (body or "") and "retournee" in (body or "").lower() for body in history_messages.mapped("body"))
         )
         self.assertTrue(any("detail des seances" in (body or "").lower() for body in history_messages.mapped("body")))
+
+    def test_return_to_complete_notifies_patient_with_email(self):
+        self.patient_user.partner_id.write({"email": "patient.payment.request@example.com"})
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande notification retour",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 80.0,
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation.payment.request.return.notifications@example.com",
+            groups="evm.group_evm_fondation",
+        )
+        foundation_user.write({"notification_type": "inbox"})
+        foundation_user.partner_id.write({"email": "fondation.payment.request.return.notifications@example.com"})
+        mail_ids_before = self._capture_mail_ids()
+
+        payment_request.with_user(foundation_user).action_return_to_complete("Merci d'ajouter une facture lisible.")
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - demande a completer : {payment_request.name}"
+        )
+
+        self.assertEqual(len(notification_mails), 1)
+        self.assertEqual(notification_mails.email_to, self.patient_user.partner_id.email)
+        self.assertIn(payment_request.name, notification_mails.body_html)
+        self.assertIn("A completer", notification_mails.body_html)
+        self.assertIn(f"/my/evm/cases/{payment_request.case_id.id}", notification_mails.body_html)
+        self.assertIn("facture lisible", notification_mails.body_html)
 
     def test_foundation_can_refuse_submitted_request_with_reason_history_and_active_queue_exit(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
@@ -960,6 +1077,89 @@ class TestEvmPaymentRequest(TransactionCase):
             any(payment_request.payment_id.display_name in (body or "") for body in internal_messages.mapped("body"))
         )
 
+    def test_validation_notifies_patient_with_email(self):
+        self.patient_user.partner_id.write({"email": "patient.payment.request@example.com"})
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande notification validation",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation.payment.request.validate.notifications@example.com",
+            groups="evm.group_evm_fondation",
+        )
+        foundation_user.write({"notification_type": "inbox"})
+        foundation_user.partner_id.write({"email": "fondation.payment.request.validate.notifications@example.com"})
+        mail_ids_before = self._capture_mail_ids()
+
+        payment_request.with_user(foundation_user).action_validate()
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - demande validee : {payment_request.name}"
+        )
+
+        self.assertEqual(len(notification_mails), 1)
+        self.assertEqual(notification_mails.email_to, self.patient_user.partner_id.email)
+        self.assertIn(payment_request.name, notification_mails.body_html)
+        self.assertIn("Validee", notification_mails.body_html)
+        self.assertIn("paiement", notification_mails.body_html.lower())
+
+    def test_validation_routes_patient_notification_to_inbox_for_internal_user(self):
+        internal_patient = new_test_user(
+            self.env,
+            login="internal.patient.payment.notifications@example.com",
+            groups="base.group_user",
+        )
+        internal_patient.write({"notification_type": "inbox"})
+        internal_patient.partner_id.write({"email": "internal.patient.payment.notifications@example.com"})
+        accepted_case = self.env["evm.case"].create(
+            {
+                "name": "Dossier accepte patient interne",
+                "kine_user_id": self.kine_user.id,
+                "patient_user_id": internal_patient.id,
+                "state": "accepted",
+                "requested_session_count": 12,
+                "authorized_session_count": 8,
+            }
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande notification inbox",
+                "case_id": accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 60.0,
+            }
+        )
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation.payment.request.inbox.notifications@example.com",
+            groups="evm.group_evm_fondation",
+        )
+        mail_ids_before = self._capture_mail_ids()
+        mail_notification_ids_before = self._capture_mail_notification_ids()
+
+        payment_request.with_user(foundation_user).action_validate()
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - demande validee : {payment_request.name}"
+        )
+        inbox_notifications = self._get_new_mail_notifications(mail_notification_ids_before).filtered(
+            lambda notification: notification.mail_message_id.subject == f"Entre Vos Mains - demande validee : {payment_request.name}"
+        )
+
+        self.assertFalse(notification_mails)
+        self.assertEqual(len(inbox_notifications), 1)
+        self.assertEqual(inbox_notifications.res_partner_id, internal_patient.partner_id)
+        self.assertEqual(inbox_notifications.notification_type, "inbox")
+        self.assertIn(payment_request.name, inbox_notifications.mail_message_id.body)
+        self.assertIn("Validee", inbox_notifications.mail_message_id.body)
+
     def test_validation_requires_foundation_user_submitted_state_and_available_authorized_sessions(self):
         self._create_internal_payment_request(
             {
@@ -1272,6 +1472,39 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertTrue(
             any(payment_request.payment_id.display_name in (body or "") for body in internal_case_messages.mapped("body"))
         )
+
+    def test_external_payment_confirmation_notifies_patient_with_email(self):
+        self.patient_user.partner_id.write({"email": "patient.payment.request@example.com"})
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation.payment.request.paid.notifications@example.com",
+            groups="evm.group_evm_fondation",
+        )
+        foundation_user.write({"notification_type": "inbox"})
+        foundation_user.partner_id.write({"email": "fondation.payment.request.paid.notifications@example.com"})
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande notification paiement",
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "state": "submitted",
+                "amount_total": 75.0,
+            }
+        )
+        payment_request.with_user(foundation_user).action_validate()
+        mail_ids_before = self._capture_mail_ids()
+
+        payment_request.with_user(foundation_user).action_confirm_external_payment()
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - demande payee : {payment_request.name}"
+        )
+
+        self.assertEqual(len(notification_mails), 1)
+        self.assertEqual(notification_mails.email_to, self.patient_user.partner_id.email)
+        self.assertIn(payment_request.name, notification_mails.body_html)
+        self.assertIn("Payee", notification_mails.body_html)
+        self.assertIn("paiement", notification_mails.body_html.lower())
 
     def test_external_payment_confirmation_requires_foundation_user_validated_state_and_linked_payment(self):
         foundation_user = new_test_user(

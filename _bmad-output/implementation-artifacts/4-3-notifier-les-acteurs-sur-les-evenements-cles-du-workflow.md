@@ -1,6 +1,6 @@
 # Story 4.3: Notifier les acteurs sur les evenements cles du workflow
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -27,10 +27,10 @@ so that je puisse agir rapidement sans surveiller en permanence la plateforme.
 
 ## Tasks / Subtasks
 
-- [ ] Definir les declencheurs et destinataires pour les evenements V1
-- [ ] Ajouter les templates email/in-app necessaires
-- [ ] Brancher l'emission des notifications sur les actions metier existantes
-- [ ] Verifier la coherence entre notification, statut visible et autorisations
+- [x] Definir les declencheurs et destinataires pour les evenements V1
+- [x] Ajouter les templates email/in-app necessaires
+- [x] Brancher l'emission des notifications sur les actions metier existantes
+- [x] Verifier la coherence entre notification, statut visible et autorisations
 
 ## Dev Notes
 
@@ -57,5 +57,25 @@ GPT-5 Codex
 
 ### Completion Notes List
 
-- Story prete pour execution par `dev-story`
+- Ajout d'un mixin de notification EVM et d'un mapping V1 des declencheurs/destinataires pour `evm.case` et `evm.payment_request`.
+- Ajout de templates email generiques pour les notifications dossier/demande avec sujet, statut, action attendue et lien vers le dossier ou la demande.
+- Branchement des notifications sur les evenements V1: dossier accepte/refuse, demande soumise, demande a completer, demande validee et demande payee.
+- Verification de la coherence portail/ACL via tests metier et portail, avec emission sous `sudo()` pour eviter les regressions de droits sur les effets de bord mail.
+- Correctifs de revue appliques: routage des notifications selon le canal configure pour le destinataire et suppression du fallback dangereux vers `patient_email` sans partenaire resolu.
+- Verification executee: `python3 -m compileall addons/evm/models/evm_case.py addons/evm/models/evm_payment_request.py addons/evm/models/evm_notification_mixin.py addons/evm/tests/test_case_review.py addons/evm/tests/test_payment_request.py`, `uvx --from 'ruff==0.11.0' ruff check addons/evm/models addons/evm/tests addons/evm/__manifest__.py`, `make reload-evm`, plus une suite Odoo ciblee sur les notifications et le scenario portail de resoumission.
 
+## File List
+
+- addons/evm/__manifest__.py
+- addons/evm/data/mail_templates.xml
+- addons/evm/models/__init__.py
+- addons/evm/models/evm_case.py
+- addons/evm/models/evm_notification_mixin.py
+- addons/evm/models/evm_payment_request.py
+- addons/evm/tests/test_case_review.py
+- addons/evm/tests/test_payment_request.py
+
+## Change Log
+
+- 2026-03-18: Added V1 workflow notifications for cases and payment requests, plus regression coverage for portal and mail side effects.
+- 2026-03-18: Applied review fixes for recipient channel routing and unauthorized refusal-notification prevention, then marked story done.

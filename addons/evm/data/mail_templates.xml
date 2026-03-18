@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="evm_case_notification_email_template" model="mail.template">
+            <field name="name">EVM Case Notification</field>
+            <field name="model_id" ref="evm.model_evm_case"/>
+            <field name="subject">{{ ctx.get('evm_notification_subject') or '' }}</field>
+            <field name="email_from">{{ user.email_formatted or company.email_formatted or '' }}</field>
+            <field name="partner_to">{{ ctx.get('evm_notification_partner_to') or '' }}</field>
+            <field name="email_to">{{ ctx.get('evm_notification_email_to') or '' }}</field>
+            <field name="use_default_to" eval="False"/>
+            <field name="body_html" type="html">
+<div style="margin: 0px; padding: 0px;">
+    <p>Bonjour,</p>
+    <p><t t-out="ctx.get('evm_notification_intro') or ''"/></p>
+    <ul>
+        <li>
+            <strong>Objet concerne :</strong>
+            <t t-out="ctx.get('evm_notification_object_name') or ''"/>
+        </li>
+        <li t-if="ctx.get('evm_notification_status_label')">
+            <strong>Nouveau statut :</strong>
+            <t t-out="ctx.get('evm_notification_status_label')"/>
+        </li>
+        <li t-if="ctx.get('evm_notification_action_text')">
+            <strong>Action attendue :</strong>
+            <t t-out="ctx.get('evm_notification_action_text')"/>
+        </li>
+    </ul>
+    <p t-if="ctx.get('evm_notification_url')">
+        <a t-att-href="ctx.get('evm_notification_url')">Ouvrir le dossier ou la demande</a>
+    </p>
+</div>
+            </field>
+            <field name="auto_delete" eval="False"/>
+        </record>
+
+        <record id="evm_payment_request_notification_email_template" model="mail.template">
+            <field name="name">EVM Payment Request Notification</field>
+            <field name="model_id" ref="evm.model_evm_payment_request"/>
+            <field name="subject">{{ ctx.get('evm_notification_subject') or '' }}</field>
+            <field name="email_from">{{ user.email_formatted or company.email_formatted or '' }}</field>
+            <field name="partner_to">{{ ctx.get('evm_notification_partner_to') or '' }}</field>
+            <field name="email_to">{{ ctx.get('evm_notification_email_to') or '' }}</field>
+            <field name="use_default_to" eval="False"/>
+            <field name="body_html" type="html">
+<div style="margin: 0px; padding: 0px;">
+    <p>Bonjour,</p>
+    <p><t t-out="ctx.get('evm_notification_intro') or ''"/></p>
+    <ul>
+        <li>
+            <strong>Objet concerne :</strong>
+            <t t-out="ctx.get('evm_notification_object_name') or ''"/>
+        </li>
+        <li t-if="ctx.get('evm_notification_status_label')">
+            <strong>Nouveau statut :</strong>
+            <t t-out="ctx.get('evm_notification_status_label')"/>
+        </li>
+        <li t-if="ctx.get('evm_notification_action_text')">
+            <strong>Action attendue :</strong>
+            <t t-out="ctx.get('evm_notification_action_text')"/>
+        </li>
+    </ul>
+    <p t-if="ctx.get('evm_notification_url')">
+        <a t-att-href="ctx.get('evm_notification_url')">Ouvrir le dossier ou la demande</a>
+    </p>
+</div>
+            </field>
+            <field name="auto_delete" eval="False"/>
+        </record>
+    </data>
+</odoo>

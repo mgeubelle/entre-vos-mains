@@ -72,7 +72,7 @@ development_status:
   epic-4: in-progress
   4-1-permettre-les-commentaires-et-echanges-asynchrones-sur-les-dossiers-et-demandes: done
   4-2-journaliser-automatiquement-les-transitions-metier-importantes: review
-  4-3-notifier-les-acteurs-sur-les-evenements-cles-du-workflow: ready-for-dev
+  4-3-notifier-les-acteurs-sur-les-evenements-cles-du-workflow: done
   4-4-cloturer-operationnellement-un-dossier-selon-les-regles-metier: ready-for-dev
   4-5-executer-une-cloture-automatique-des-dossiers-via-tache-planifiee: ready-for-dev
   epic-4-retrospective: optional

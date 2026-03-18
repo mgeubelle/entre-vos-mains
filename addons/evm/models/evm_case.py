@@ -5,7 +5,7 @@ from odoo.tools import email_normalize, plaintext2html, single_email_re
 
 class EvmCase(models.Model):
     _name = "evm.case"
-    _inherit = ["mail.thread"]
+    _inherit = ["mail.thread", "evm.notification.mixin"]
     _description = "EVM Case"
     _order = "create_date desc, id desc"
     _session_balance_counted_states = ("validated", "paid", "closed")
@@ -271,6 +271,63 @@ class EvmCase(models.Model):
             "Votre dossier Entre Vos Mains a ete accepte. Utilisez ce lien securise pour activer ou retrouver votre acces portail."
         )
 
+    def _get_patient_notification_partner(self, ensure_partner=False):
+        self.ensure_one()
+        partner = (self.patient_user_id.partner_id or self.patient_partner_id).exists()
+        if partner or not ensure_partner:
+            return partner
+        try:
+            return self._ensure_patient_partner().exists()
+        except ValidationError:
+            return self.env["res.partner"]
+
+    def _get_patient_portal_case_url(self):
+        self.ensure_one()
+        if not self.patient_user_id:
+            return False
+        return f"{self.get_base_url()}/my/evm/cases/{self.id}"
+
+    def _get_case_notification_payload(self, event_key):
+        self.ensure_one()
+        status_label = self._evm_get_selection_label("state", self.state)
+        if event_key == "accepted":
+            return {
+                "subject": _("Entre Vos Mains - dossier accepte : %(case)s", case=self.name),
+                "intro": _("Votre dossier %(case)s a ete accepte par la fondation.", case=self.name),
+                "object_name": self.name,
+                "status_label": status_label,
+                "action_text": _("Acces portail actif. Vous pouvez consulter votre dossier et preparer vos demandes."),
+                "url": self._get_patient_portal_case_url(),
+            }
+        if event_key == "refused":
+            return {
+                "subject": _("Entre Vos Mains - dossier refuse : %(case)s", case=self.name),
+                "intro": _("Votre dossier %(case)s a ete refuse par la fondation.", case=self.name),
+                "object_name": self.name,
+                "status_label": status_label,
+                "action_text": _("Aucune action supplementaire n'est attendue dans la plateforme."),
+                "url": False,
+            }
+        return {}
+
+    def _notify_patient_case_event(self, event_key, ensure_partner=False):
+        for record in self:
+            payload = record._get_case_notification_payload(event_key)
+            if not payload:
+                continue
+            patient_partner = record._get_patient_notification_partner(ensure_partner=ensure_partner)
+            record._evm_send_partner_notification(
+                "evm.evm_case_notification_email_template",
+                subject=payload["subject"],
+                intro=payload["intro"],
+                object_name=payload["object_name"],
+                status_label=payload["status_label"],
+                action_text=payload["action_text"],
+                url=payload["url"],
+                partner=patient_partner,
+            )
+        return True
+
     def _get_patient_normalized_email(self):
         self.ensure_one()
         return email_normalize(self.patient_email)
@@ -521,6 +578,7 @@ class EvmCase(models.Model):
                 internal_message = record._build_decision_internal_message("accepted", remaining_after_accept)
                 if internal_message:
                     record._post_system_message(internal_message, subtype_xmlid="mail.mt_note")
+                record._notify_patient_case_event("accepted")
                 annual_cap_used += record.authorized_session_count
         return True
 
@@ -542,4 +600,5 @@ class EvmCase(models.Model):
             internal_message = record._build_decision_internal_message("refused")
             if internal_message:
                 record._post_system_message(internal_message, subtype_xmlid="mail.mt_note")
+            record._notify_patient_case_event("refused", ensure_partner=True)
         return True

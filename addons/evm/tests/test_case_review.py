@@ -37,6 +37,24 @@ class TestEvmCaseReview(TransactionCase):
         case.with_user(self.fondation_user).action_accept()
         return case
 
+    def _capture_mail_ids(self):
+        return set(self.env["mail.mail"].sudo().search([]).ids)
+
+    def _capture_notification_ids(self):
+        return set(self.env["mail.message"].sudo().search([("message_type", "=", "notification")]).ids)
+
+    def _get_new_mails(self, before_ids):
+        return self.env["mail.mail"].sudo().browse(
+            sorted(set(self.env["mail.mail"].sudo().search([]).ids) - before_ids)
+        )
+
+    def _get_new_notifications(self, before_ids):
+        return self.env["mail.message"].sudo().browse(
+            sorted(
+                set(self.env["mail.message"].sudo().search([("message_type", "=", "notification")]).ids) - before_ids
+            )
+        )
+
     def test_accept_action_updates_case_and_history(self):
         case = self._create_pending_case(requested=12)
 
@@ -199,6 +217,74 @@ class TestEvmCaseReview(TransactionCase):
             any("Systeme:" in (body or "") and "Dossier refuse" in body for body in case.message_ids.mapped("body")),
             "Le refus doit etre trace dans le chatter.",
         )
+
+    def test_accept_action_sends_patient_notification_email(self):
+        case = self._create_pending_case(requested=12, suffix="NotifyAccept")
+        self.fondation_user.write({"notification_type": "inbox"})
+        self.fondation_user.partner_id.write({"email": "fondation.review@example.com"})
+        mail_ids_before = self._capture_mail_ids()
+
+        with patch(
+            "odoo.addons.portal.wizard.portal_wizard.PortalWizardUser._send_email",
+            autospec=True,
+            return_value=True,
+        ):
+            self._accept_case(case, authorized=10)
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - dossier accepte : {case.name}"
+        )
+
+        self.assertEqual(len(notification_mails), 1)
+        self.assertEqual(notification_mails.email_to, case.patient_partner_id.email)
+        self.assertIn(case.name, notification_mails.body_html)
+        self.assertIn("Accepte", notification_mails.body_html)
+        self.assertIn(f"/my/evm/cases/{case.id}", notification_mails.body_html)
+
+    def test_refuse_action_sends_patient_notification_without_unrelated_recipient(self):
+        case = self._create_pending_case(requested=12, suffix="NotifyRefuse")
+        other_patient = new_test_user(
+            self.env,
+            login="other.case.review.notification@example.com",
+            groups="evm.group_evm_patient",
+        )
+        other_patient.partner_id.write({"email": "other.case.review.notification@example.com"})
+        mail_ids_before = self._capture_mail_ids()
+
+        case.with_user(self.fondation_user).action_refuse()
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - dossier refuse : {case.name}"
+        )
+
+        self.assertEqual(len(notification_mails), 1)
+        self.assertTrue(case.patient_partner_id)
+        self.assertEqual(notification_mails.email_to, case.patient_partner_id.email)
+        self.assertIn(case.name, notification_mails.body_html)
+        self.assertIn("Refuse", notification_mails.body_html)
+        self.assertFalse(
+            notification_mails.filtered(lambda mail: other_patient.partner_id.email in (mail.email_to or ""))
+        )
+
+    def test_refuse_action_skips_notification_when_patient_partner_cannot_be_resolved(self):
+        conflicting_internal_user = new_test_user(
+            self.env,
+            login="patient.review.refuseconflict@example.com",
+            groups="base.group_user",
+        )
+        conflicting_internal_user.partner_id.write({"email": "patient.review.refuseconflict@example.com"})
+        case = self._create_pending_case(requested=12, suffix="RefuseConflict")
+        mail_ids_before = self._capture_mail_ids()
+
+        case.with_user(self.fondation_user).action_refuse()
+
+        notification_mails = self._get_new_mails(mail_ids_before).filtered(
+            lambda mail: mail.subject == f"Entre Vos Mains - dossier refuse : {case.name}"
+        )
+
+        self.assertEqual(case.state, "refused")
+        self.assertFalse(case.patient_partner_id)
+        self.assertFalse(notification_mails)
 
     def test_decision_guards_block_direct_state_write_and_non_pending_decisions(self):
         case = self._create_pending_case(requested=12)

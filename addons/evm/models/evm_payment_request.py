@@ -10,7 +10,7 @@ from odoo.tools.mimetypes import guess_mimetype
 
 class EvmPaymentRequest(models.Model):
     _name = "evm.payment_request"
-    _inherit = ["mail.thread"]
+    _inherit = ["mail.thread", "evm.notification.mixin"]
     _description = "EVM Payment Request"
     _order = "create_date desc, id desc"
 
@@ -202,6 +202,94 @@ class EvmPaymentRequest(models.Model):
     @api.model
     def _build_case_external_payment_internal_message(self, payment):
         return _("Paiement Odoo lie: %(payment)s.", payment=payment.display_name)
+
+    def _get_patient_notification_partner(self):
+        self.ensure_one()
+        return self.patient_user_id.partner_id.exists()
+
+    def _get_patient_case_url(self):
+        self.ensure_one()
+        if not self.patient_user_id:
+            return False
+        return f"{self.get_base_url()}/my/evm/cases/{self.case_id.id}"
+
+    def _get_payment_request_notification_payload(self, event_key):
+        self.ensure_one()
+        status_label = self._evm_get_selection_label("state", self.state)
+        if event_key == "submitted":
+            return {
+                "subject": _("Entre Vos Mains - demande de paiement soumise : %(request)s", request=self.name),
+                "intro": _("La demande de paiement %(request)s a ete soumise par le patient.", request=self.name),
+                "object_name": self.name,
+                "status_label": status_label,
+                "action_text": _("Veuillez revoir la demande dans Odoo."),
+                "url": self._notify_get_action_link("view"),
+            }
+        if event_key == "to_complete":
+            return {
+                "subject": _("Entre Vos Mains - demande a completer : %(request)s", request=self.name),
+                "intro": _("Votre demande de paiement %(request)s doit etre completee.", request=self.name),
+                "object_name": self.name,
+                "status_label": status_label,
+                "action_text": self.completion_request_reason or _("Merci de completer votre demande dans le portail."),
+                "url": self._get_patient_case_url(),
+            }
+        if event_key == "validated":
+            return {
+                "subject": _("Entre Vos Mains - demande validee : %(request)s", request=self.name),
+                "intro": _("Votre demande de paiement %(request)s a ete validee par la fondation.", request=self.name),
+                "object_name": self.name,
+                "status_label": status_label,
+                "action_text": _("Le paiement est en preparation par la fondation."),
+                "url": self._get_patient_case_url(),
+            }
+        if event_key == "paid":
+            return {
+                "subject": _("Entre Vos Mains - demande payee : %(request)s", request=self.name),
+                "intro": _("Le paiement de votre demande %(request)s a ete confirme hors plateforme.", request=self.name),
+                "object_name": self.name,
+                "status_label": status_label,
+                "action_text": _("Aucune action supplementaire n'est requise."),
+                "url": self._get_patient_case_url(),
+            }
+        return {}
+
+    def _notify_foundation_payment_request_event(self, event_key):
+        if event_key != "submitted":
+            return True
+        foundation_partners = self._evm_get_foundation_notification_partners()
+        for record in self:
+            payload = record._get_payment_request_notification_payload(event_key)
+            if not payload:
+                continue
+            record._evm_send_inbox_notification(
+                subject=payload["subject"],
+                intro=payload["intro"],
+                object_name=payload["object_name"],
+                status_label=payload["status_label"],
+                action_text=payload["action_text"],
+                url=payload["url"],
+                partners=foundation_partners,
+            )
+        return True
+
+    def _notify_patient_payment_request_event(self, event_key):
+        for record in self:
+            payload = record._get_payment_request_notification_payload(event_key)
+            if not payload:
+                continue
+            patient_partner = record._get_patient_notification_partner()
+            record._evm_send_partner_notification(
+                "evm.evm_payment_request_notification_email_template",
+                subject=payload["subject"],
+                intro=payload["intro"],
+                object_name=payload["object_name"],
+                status_label=payload["status_label"],
+                action_text=payload["action_text"],
+                url=payload["url"],
+                partner=patient_partner,
+            )
+        return True
 
     def _is_internal_manual_management_context(self):
         return (
@@ -605,6 +693,7 @@ class EvmPaymentRequest(models.Model):
                     count=attachment_count,
                 )
             )
+            record._notify_foundation_payment_request_event("submitted")
         return True
 
     def action_return_to_complete(self, reason=None):
@@ -629,6 +718,7 @@ class EvmPaymentRequest(models.Model):
                     reason=sanitized_reason,
                 )
             )
+            record._notify_patient_payment_request_event("to_complete")
         return True
 
     def action_refuse(self, reason=None):
@@ -673,6 +763,7 @@ class EvmPaymentRequest(models.Model):
                     record._build_validation_internal_message(payment),
                     subtype_xmlid="mail.mt_note",
                 )
+                record._notify_patient_payment_request_event("validated")
         return True
 
     def action_confirm_external_payment(self):
@@ -707,6 +798,7 @@ class EvmPaymentRequest(models.Model):
                 record._build_case_external_payment_internal_message(payment),
                 subtype_xmlid="mail.mt_note",
             )
+            record._notify_patient_payment_request_event("paid")
         return True
 
     def action_open_payment(self):
