@@ -120,6 +120,20 @@
                             <field name="foundation_decision_user_id" readonly="1"/>
                         </group>
                     </group>
+                    <notebook>
+                        <page string="Demandes de paiement">
+                            <field name="payment_request_ids" readonly="1">
+                                <list string="Demandes de paiement" create="false" delete="false" default_order="create_date desc">
+                                    <field name="name" string="Reference"/>
+                                    <field name="create_date" string="Date de creation"/>
+                                    <field name="sessions_count" string="Nombre de seances"/>
+                                    <field name="amount_total" string="Montant"/>
+                                    <field name="currency_id" column_invisible="True"/>
+                                    <field name="state" string="Statut"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
                 <chatter reload_on_follower="True"/>
             </form>

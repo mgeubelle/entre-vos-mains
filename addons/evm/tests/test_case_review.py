@@ -222,3 +222,16 @@ class TestEvmCaseReview(TransactionCase):
         self.assertIn('name="annual_session_cap_remaining"', form_arch)
         self.assertIn("evm_annual_session_cap", self.env["res.config.settings"]._fields)
         self.assertIn('name="evm_annual_session_cap"', settings_arch)
+
+    def test_case_form_exposes_payment_request_notebook_with_expected_columns(self):
+        form_arch = self.env.ref("evm.evm_case_view_form").arch_db
+
+        self.assertIn('<page string="Demandes de paiement">', form_arch)
+        self.assertIn('name="payment_request_ids" readonly="1"', form_arch)
+        self.assertIn('default_order="create_date desc"', form_arch)
+        self.assertIn('field name="name" string="Reference"', form_arch)
+        self.assertIn('field name="create_date" string="Date de creation"', form_arch)
+        self.assertIn('field name="sessions_count" string="Nombre de seances"', form_arch)
+        self.assertIn('field name="amount_total" string="Montant"', form_arch)
+        self.assertIn('field name="state" string="Statut"', form_arch)
+        self.assertNotIn('field name="patient_user_id" string="Patient"', form_arch)
