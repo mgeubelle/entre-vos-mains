@@ -4,6 +4,7 @@ from os.path import basename, splitext
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
+from odoo.tools import plaintext2html
 from odoo.tools.mimetypes import guess_mimetype
 
 
@@ -125,6 +126,34 @@ class EvmPaymentRequest(models.Model):
     _portal_resumable_states = {"draft", "to_complete"}
     _portal_uploadable_states = _portal_resumable_states
     _portal_submittable_states = _portal_resumable_states
+
+    @api.model
+    def _sanitize_comment_body(self, body):
+        sanitized_body = (body or "").strip()
+        if not sanitized_body:
+            raise ValidationError(_("Veuillez saisir un commentaire avant de l'envoyer."))
+        return plaintext2html(sanitized_body)
+
+    def _check_comment_post_access(self):
+        self.ensure_one()
+        user = self.env.user
+        if user.has_group("evm.group_evm_admin") or user.has_group("evm.group_evm_fondation"):
+            return
+        if user.has_group("evm.group_evm_patient") and self.patient_user_id == user:
+            return
+        raise AccessError(_("Vous ne pouvez pas ajouter de commentaire sur cette demande."))
+
+    def action_post_comment(self, body):
+        self.ensure_one()
+        self._check_comment_post_access()
+        sanitized_body = self._sanitize_comment_body(body)
+        self.sudo().message_post(
+            author_id=self.env.user.partner_id.id,
+            body=sanitized_body,
+            message_type="comment",
+            subtype_xmlid="mail.mt_comment",
+        )
+        return True
 
     def _is_internal_manual_management_context(self):
         return (

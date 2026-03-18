@@ -85,6 +85,31 @@ class EvmCustomerPortal(CustomerPortal):
             return {}
         return flash_payload
 
+    def _set_case_comment_flash(self, case_id, message):
+        request.session["evm_case_comment_flash"] = {
+            "case_id": case_id,
+            "message": message,
+        }
+
+    def _pop_case_comment_flash(self, case_id):
+        flash_payload = request.session.pop("evm_case_comment_flash", None)
+        if not flash_payload or flash_payload.get("case_id") != case_id:
+            return {}
+        return flash_payload
+
+    def _set_payment_request_comment_flash(self, case_id, request_id, message):
+        request.session["evm_payment_request_comment_flash"] = {
+            "case_id": case_id,
+            "request_id": request_id,
+            "message": message,
+        }
+
+    def _pop_payment_request_comment_flash(self, case_id):
+        flash_payload = request.session.pop("evm_payment_request_comment_flash", None)
+        if not flash_payload or flash_payload.get("case_id") != case_id:
+            return {}
+        return flash_payload
+
     def _set_patient_case_flash(self, message):
         request.session["evm_patient_case_flash"] = {"message": message}
 
@@ -113,6 +138,9 @@ class EvmCustomerPortal(CustomerPortal):
             lambda message: message.body and (not message.subtype_id or not message.subtype_id.internal)
         ).sorted(lambda message: message.date or message.create_date, reverse=True)
 
+    def _get_history_author_names(self, messages):
+        return {message.id: message.sudo().author_id.display_name for message in messages if message.author_id}
+
     def _prepare_case_creation_values(self, form_values=None, errors=None):
         values = self._prepare_portal_layout_values()
         values.update(
@@ -121,6 +149,20 @@ class EvmCustomerPortal(CustomerPortal):
                 "form_values": form_values or {},
                 "errors": errors or {},
                 "page_error": "Veuillez corriger les erreurs ci-dessous." if errors else False,
+            }
+        )
+        return values
+
+    def _prepare_kine_case_values(self, case_sudo, case_comment_error=None, case_comment_value=""):
+        values = self._prepare_portal_layout_values()
+        values.update(
+            {
+                "case": case_sudo,
+                "history_messages": self._get_allowed_history_messages(case_sudo),
+                "case_comment_error": case_comment_error,
+                "case_comment_flash": self._pop_case_comment_flash(case_sudo.id),
+                "case_comment_value": case_comment_value,
+                "page_name": "evm_case",
             }
         )
         return values
@@ -171,6 +213,9 @@ class EvmCustomerPortal(CustomerPortal):
         if overrides:
             values.update(overrides)
         return values
+
+    def _sanitize_portal_comment(self, raw_comment):
+        return (raw_comment or "").strip()
 
     def _get_patient_case_document_entries(self, case_id, payment_requests, page=1, url_args=None):
         if not payment_requests:
@@ -279,6 +324,10 @@ class EvmCustomerPortal(CustomerPortal):
         submission_errors=None,
         update_errors=None,
         update_form_values=None,
+        case_comment_error=None,
+        case_comment_value="",
+        payment_request_comment_errors=None,
+        payment_request_comment_values=None,
     ):
         payment_request_model = request.env["evm.payment_request"]
         payment_request_domain = [("case_id", "=", case_sudo.id)]
@@ -319,11 +368,27 @@ class EvmCustomerPortal(CustomerPortal):
             payment_request.id: self._get_allowed_payment_request_history_messages(payment_request)
             for payment_request in payment_requests
         }
+        payment_request_history_author_names = {
+            payment_request.id: self._get_history_author_names(messages)
+            for payment_request, messages in (
+                (payment_request, payment_request_history_messages.get(payment_request.id, request.env["mail.message"]))
+                for payment_request in payment_requests
+            )
+        }
         values.update(
             {
                 "case": case_sudo,
+                "case_history_messages": self._get_allowed_history_messages(case_sudo),
+                "case_history_author_names": self._get_history_author_names(self._get_allowed_history_messages(case_sudo)),
+                "case_comment_error": case_comment_error,
+                "case_comment_flash": self._pop_case_comment_flash(case_sudo.id),
+                "case_comment_value": case_comment_value,
                 "payment_requests": payment_requests,
+                "payment_request_comment_errors": payment_request_comment_errors or {},
+                "payment_request_comment_flash": self._pop_payment_request_comment_flash(case_sudo.id),
+                "payment_request_comment_values": payment_request_comment_values or {},
                 "payment_request_history_messages": payment_request_history_messages,
+                "payment_request_history_author_names": payment_request_history_author_names,
                 "document_entries": document_entries,
                 "document_pager": document_pager,
                 "pager": pager,
@@ -446,15 +511,84 @@ class EvmCustomerPortal(CustomerPortal):
                 self._prepare_patient_case_values(case_sudo, page=page, url_args=kwargs),
             )
 
-        values = self._prepare_portal_layout_values()
-        values.update(
-            {
-                "case": case_sudo,
-                "history_messages": self._get_allowed_history_messages(case_sudo),
-                "page_name": "evm_case",
-            }
-        )
-        return request.render("evm.evm_portal_my_case", values)
+        return request.render("evm.evm_portal_my_case", self._prepare_kine_case_values(case_sudo))
+
+    @http.route(
+        "/my/evm/cases/<int:case_id>/comments/post",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        website=True,
+    )
+    def portal_my_case_comment_post(self, case_id, **post):
+        if self._is_patient_user():
+            case_sudo = self._get_patient_case_or_redirect(case_id)
+        elif self._is_kine_user():
+            case_sudo = self._get_portal_case_or_redirect(case_id)
+        else:
+            return request.redirect("/my")
+        if not case_sudo:
+            if self._is_patient_user():
+                return self._redirect_patient_case_list_with_flash(_("Ce dossier n'est pas accessible depuis votre portail."))
+            return request.redirect("/my/evm/cases")
+
+        comment = self._sanitize_portal_comment(post.get("comment"))
+        payment_request_page = self._coerce_positive_int(post.get("payment_request_page"))
+        document_page = self._coerce_positive_int(post.get("document_page"))
+        case = request.env["evm.case"].browse(case_sudo.id)
+        if not comment:
+            if self._is_patient_user():
+                return request.render(
+                    "evm.evm_portal_my_patient_case",
+                    self._prepare_patient_case_values(
+                        case_sudo,
+                        page=payment_request_page,
+                        url_args={"document_page": document_page} if document_page > 1 else {},
+                        case_comment_error=_("Veuillez saisir un commentaire avant de l'envoyer."),
+                        case_comment_value=post.get("comment") or "",
+                    ),
+                )
+            return request.render(
+                "evm.evm_portal_my_case",
+                self._prepare_kine_case_values(
+                    case_sudo,
+                    case_comment_error=_("Veuillez saisir un commentaire avant de l'envoyer."),
+                    case_comment_value=post.get("comment") or "",
+                ),
+            )
+        try:
+            case.action_post_comment(comment)
+        except (AccessError, ValidationError) as exc:
+            if self._is_patient_user():
+                return request.render(
+                    "evm.evm_portal_my_patient_case",
+                    self._prepare_patient_case_values(
+                        case_sudo,
+                        page=payment_request_page,
+                        url_args={"document_page": document_page} if document_page > 1 else {},
+                        case_comment_error=exc.args[0],
+                        case_comment_value=post.get("comment") or "",
+                    ),
+                )
+            return request.render(
+                "evm.evm_portal_my_case",
+                self._prepare_kine_case_values(
+                    case_sudo,
+                    case_comment_error=exc.args[0],
+                    case_comment_value=post.get("comment") or "",
+                ),
+            )
+
+        self._set_case_comment_flash(case_sudo.id, _("Votre commentaire a ete ajoute au dossier."))
+        if self._is_patient_user():
+            return request.redirect(
+                self._build_patient_case_redirect_url(
+                    case_sudo.id,
+                    payment_request_page=payment_request_page,
+                    document_page=document_page,
+                )
+            )
+        return request.redirect(f"/my/evm/cases/{case_sudo.id}")
 
     @http.route(
         "/my/evm/cases/<int:case_id>/payment-requests/new",
@@ -635,5 +769,45 @@ class EvmCustomerPortal(CustomerPortal):
             payment_request.case_id.id,
             payment_request.id,
             _("La demande de paiement a ete soumise a la fondation."),
+        )
+        return request.redirect(payment_request_context["redirect_url"])
+
+    @http.route(
+        "/my/evm/payment-requests/<int:payment_request_id>/comments/post",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        website=True,
+    )
+    def portal_my_payment_request_comment_post(self, payment_request_id, **post):
+        payment_request_context = self._get_patient_payment_request_context(payment_request_id, post)
+        payment_request = payment_request_context["payment_request"]
+        if not payment_request:
+            return self._redirect_patient_case_list_with_flash(
+                _("Cette demande de paiement n'est pas accessible depuis votre portail.")
+            )
+
+        comment = self._sanitize_portal_comment(post.get("comment"))
+        if not comment:
+            return self._render_patient_case_from_payment_request_context(
+                payment_request_context,
+                payment_request_comment_errors={
+                    payment_request.id: _("Veuillez saisir un commentaire avant de l'envoyer.")
+                },
+                payment_request_comment_values={payment_request.id: post.get("comment") or ""},
+            )
+        try:
+            payment_request.action_post_comment(comment)
+        except (AccessError, ValidationError) as exc:
+            return self._render_patient_case_from_payment_request_context(
+                payment_request_context,
+                payment_request_comment_errors={payment_request.id: exc.args[0]},
+                payment_request_comment_values={payment_request.id: post.get("comment") or ""},
+            )
+
+        self._set_payment_request_comment_flash(
+            payment_request.case_id.id,
+            payment_request.id,
+            _("Votre commentaire a ete ajoute a la demande."),
         )
         return request.redirect(payment_request_context["redirect_url"])

@@ -1,6 +1,6 @@
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
-from odoo.tools import email_normalize, single_email_re
+from odoo.tools import email_normalize, plaintext2html, single_email_re
 
 
 class EvmCase(models.Model):
@@ -121,7 +121,6 @@ class EvmCase(models.Model):
         "foundation_decision_user_id",
         "foundation_decision_date",
     }
-
     @api.depends("patient_user_id", "patient_user_id.partner_id.display_name", "patient_name", "name")
     def _compute_patient_display_name(self):
         for record in self:
@@ -192,23 +191,58 @@ class EvmCase(models.Model):
         if any(record.state != "pending" for record in self):
             raise ValidationError(_("Seul un dossier soumis peut etre traite par la fondation."))
 
+    @api.model
+    def _sanitize_comment_body(self, body):
+        sanitized_body = (body or "").strip()
+        if not sanitized_body:
+            raise ValidationError(_("Veuillez saisir un commentaire avant de l'envoyer."))
+        return plaintext2html(sanitized_body)
+
+    def _check_comment_post_access(self):
+        self.ensure_one()
+        user = self.env.user
+        if user.has_group("evm.group_evm_admin") or user.has_group("evm.group_evm_fondation"):
+            return
+        if user.has_group("evm.group_evm_kine") and self.kine_user_id == user:
+            return
+        if user.has_group("evm.group_evm_patient") and self.patient_user_id == user:
+            return
+        raise AccessError(_("Vous ne pouvez pas ajouter de commentaire sur ce dossier."))
+
+    def action_post_comment(self, body):
+        self.ensure_one()
+        self._check_comment_post_access()
+        sanitized_body = self._sanitize_comment_body(body)
+        self.sudo().message_post(
+            author_id=self.env.user.partner_id.id,
+            body=sanitized_body,
+            message_type="comment",
+            subtype_xmlid="mail.mt_comment",
+        )
+        return True
+
     def _build_decision_message(self, decision, annual_cap_remaining=None):
         self.ensure_one()
         if decision == "accepted":
-            message = _(
+            return _(
                 "Dossier accepte par la fondation avec %(count)s seances autorisees.",
                 count=self.authorized_session_count,
             )
-            if annual_cap_remaining is not None:
-                message += " " + _(
+        return _("Dossier refuse par la fondation.")
+
+    def _build_decision_internal_message(self, decision, annual_cap_remaining=None):
+        self.ensure_one()
+        details = []
+        if decision == "accepted" and annual_cap_remaining is not None:
+            details.append(
+                _(
                     "Plafond annuel restant: %(remaining)s seances.",
                     remaining=annual_cap_remaining,
                 )
-        else:
-            message = _("Dossier refuse par la fondation.")
+            )
         if self.foundation_decision_note:
-            message += " " + _("Note: %(note)s", note=self.foundation_decision_note)
-        return message
+            details.append(_("Note: %(note)s", note=self.foundation_decision_note))
+        return " ".join(details)
 
     def _build_patient_portal_message(self):
         self.ensure_one()
@@ -471,6 +505,9 @@ class EvmCase(models.Model):
                     }
                 )
                 record.message_post(body=record._build_decision_message("accepted", remaining_after_accept))
+                internal_message = record._build_decision_internal_message("accepted", remaining_after_accept)
+                if internal_message:
+                    record.message_post(body=internal_message, subtype_xmlid="mail.mt_note")
                 annual_cap_used += record.authorized_session_count
         return True
 
@@ -489,4 +526,7 @@ class EvmCase(models.Model):
                 }
             )
             record.message_post(body=record._build_decision_message("refused"))
+            internal_message = record._build_decision_internal_message("refused")
+            if internal_message:
+                record.message_post(body=internal_message, subtype_xmlid="mail.mt_note")
         return True

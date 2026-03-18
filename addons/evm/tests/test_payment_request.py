@@ -479,6 +479,68 @@ class TestEvmPaymentRequest(TransactionCase):
             payment_request,
         )
 
+    def test_authorized_users_can_post_comments_on_case_and_request(self):
+        foundation_user = new_test_user(
+            self.env,
+            login="fondation_payment_request_comment",
+            groups="evm.group_evm_fondation",
+        )
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+                "amount_total": 45,
+            }
+        )
+
+        self.accepted_case.with_user(self.patient_user).action_post_comment("Question patient sur le dossier")
+        payment_request.with_user(foundation_user).action_post_comment("Reponse fondation sur la demande")
+
+        case_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.case"), ("res_id", "=", self.accepted_case.id)]
+        )
+        request_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.payment_request"), ("res_id", "=", payment_request.id)]
+        )
+
+        self.assertTrue(any("Question patient sur le dossier" in (body or "") for body in case_messages.mapped("body")))
+        self.assertTrue(any("Reponse fondation sur la demande" in (body or "") for body in request_messages.mapped("body")))
+        self.assertTrue(any(message.author_id == self.patient_user.partner_id for message in case_messages))
+        self.assertTrue(any(message.author_id == foundation_user.partner_id for message in request_messages))
+
+    def test_comment_posting_requires_authorized_actor_and_non_empty_body(self):
+        other_patient_user = new_test_user(
+            self.env,
+            login="other_patient_request_comment",
+            groups="evm.group_evm_patient",
+        )
+        kine_user = new_test_user(
+            self.env,
+            login="kine_request_comment_forbidden",
+            groups="evm.group_evm_kine",
+        )
+        payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
+            {
+                "case_id": self.accepted_case.id,
+                "sessions_count": 2,
+            }
+        )
+
+        with self.assertRaisesRegex(ValidationError, "commentaire"):
+            self.accepted_case.with_user(self.patient_user).action_post_comment("   ")
+
+        self.accepted_case.with_user(self.kine_user).action_post_comment("Commentaire kine autorise")
+        case_messages = self.env["mail.message"].sudo().search(
+            [("model", "=", "evm.case"), ("res_id", "=", self.accepted_case.id)]
+        )
+        self.assertTrue(any("Commentaire kine autorise" in (body or "") for body in case_messages.mapped("body")))
+
+        with self.assertRaises(AccessError):
+            self.accepted_case.with_user(kine_user).action_post_comment("Commentaire non autorise")
+
+        with self.assertRaises(AccessError):
+            payment_request.with_user(other_patient_user).action_post_comment("Commentaire non autorise")
+
     def test_foundation_can_return_submitted_request_to_complete_with_reason_and_history(self):
         payment_request = self.env["evm.payment_request"].with_user(self.patient_user).create(
             {

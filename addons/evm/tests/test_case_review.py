@@ -51,6 +51,29 @@ class TestEvmCaseReview(TransactionCase):
             "L'acceptation doit etre tracee dans le chatter.",
         )
 
+    def test_decision_sensitive_details_stay_in_internal_notes(self):
+        today = fields.Date.context_today(self.case_model)
+        existing_usage = self.case_model._get_annual_session_cap_usage_by_year({today.year}).get(today.year, 0)
+        self.config_parameters.set_param("evm.annual_session_cap", str(existing_usage + 20))
+        case = self._create_pending_case(requested=12, suffix="DecisionNote")
+        case.with_user(self.fondation_user).write(
+            {
+                "authorized_session_count": 8,
+                "foundation_decision_note": "Reserve fondation uniquement.",
+            }
+        )
+
+        case.with_user(self.fondation_user).action_accept()
+
+        public_messages = case.message_ids.filtered(lambda message: not message.subtype_id or not message.subtype_id.internal)
+        internal_messages = case.message_ids.filtered(lambda message: message.subtype_id and message.subtype_id.internal)
+
+        self.assertTrue(any("Dossier accepte" in (body or "") for body in case.message_ids.mapped("body")))
+        self.assertFalse(any("Plafond annuel restant" in (body or "") for body in public_messages.mapped("body")))
+        self.assertFalse(any("Reserve fondation uniquement." in (body or "") for body in public_messages.mapped("body")))
+        self.assertTrue(any("Plafond annuel restant" in (body or "") for body in internal_messages.mapped("body")))
+        self.assertTrue(any("Reserve fondation uniquement." in (body or "") for body in internal_messages.mapped("body")))
+
     def test_accept_action_creates_patient_portal_access_and_prepares_invitation(self):
         case = self._create_pending_case(requested=12, suffix="Invite")
 

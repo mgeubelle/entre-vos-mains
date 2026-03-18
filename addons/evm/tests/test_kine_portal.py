@@ -75,6 +75,7 @@ class TestEvmKinePortal(HttpCase):
         self.assertIn("Seances autorisees", detail_response.text)
         self.assertIn("Commentaire visible.", detail_response.text)
         self.assertNotIn("Note interne.", detail_response.text)
+        self.assertIn(f'/my/evm/cases/{self.own_case.id}/comments/post', detail_response.text)
 
     def test_kine_portal_redirects_when_opening_another_kine_case(self):
         self.authenticate(self.kine_login, self.kine_password)
@@ -83,6 +84,32 @@ class TestEvmKinePortal(HttpCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertTrue(response.headers["Location"].endswith("/my/evm/cases"))
+
+    def test_kine_portal_can_post_comment_on_own_case(self):
+        self.authenticate(self.kine_login, self.kine_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.own_case.id}")
+        post_response = self.url_open(
+            f"/my/evm/cases/{self.own_case.id}/comments/post",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "comment": "Commentaire kine via portail.",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(post_response.status_code, 303)
+        self.assertRegex(post_response.headers["Location"], rf"/my/evm/cases/{self.own_case.id}$")
+
+        refreshed_case = self.env["evm.case"].browse(self.own_case.id)
+        self.assertTrue(
+            any("Commentaire kine via portail." in (body or "") for body in refreshed_case.message_ids.mapped("body"))
+        )
+
+        success_response = self.url_open(post_response.headers["Location"])
+        response_text = html.unescape(success_response.text)
+        self.assertIn("Votre commentaire a ete ajoute au dossier.", response_text)
+        self.assertIn("Commentaire kine via portail.", response_text)
 
     def test_kine_portal_creation_form_creates_a_pending_case(self):
         self.authenticate(self.kine_login, self.kine_password)

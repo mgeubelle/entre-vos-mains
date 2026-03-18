@@ -69,7 +69,7 @@ development_status:
   epic-3-retrospective: optional
 
   epic-4: in-progress
-  4-1-permettre-les-commentaires-et-echanges-asynchrones-sur-les-dossiers-et-demandes: ready-for-dev
+  4-1-permettre-les-commentaires-et-echanges-asynchrones-sur-les-dossiers-et-demandes: done
   4-2-journaliser-automatiquement-les-transitions-metier-importantes: ready-for-dev
   4-3-notifier-les-acteurs-sur-les-evenements-cles-du-workflow: ready-for-dev
   4-4-cloturer-operationnellement-un-dossier-selon-les-regles-metier: ready-for-dev

@@ -48,4 +48,5 @@
 
 ## Regles de workflow local
 
-- Apres toute code review approuvee qui modifie des artefacts Odoo charges par le serveur (`models/`, `views/`, `security/`, `__manifest__.py`), rafraichir l'environnement manuel local avant de clore la review: redemarrer `odoo-19` puis upgrader `evm` sur `evm_dev`.
+- Apres chaque modification de code sur des artefacts Odoo charges par le serveur (`models/`, `controllers/`, `views/`, `security/`, `__manifest__.py`), rafraichir l'environnement manuel local avant de poursuivre: redemarrer `odoo-19` puis upgrader `evm` sur `evm_dev`.
+- Utiliser la commande standard `make reload-evm` pour appliquer ce refresh de maniere systematique et eviter les ecarts entre XML/QWeb, Python et registry.

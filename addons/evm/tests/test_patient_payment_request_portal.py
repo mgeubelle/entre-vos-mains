@@ -49,6 +49,8 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "authorized_session_count": 12,
             }
         )
+        cls.accepted_case.message_post(body="Commentaire dossier visible patient.", subtype_xmlid="mail.mt_comment")
+        cls.accepted_case.message_post(body="Note interne dossier invisible patient.", subtype_xmlid="mail.mt_note")
         cls.other_case = cls.env["evm.case"].create(
             {
                 "name": "Dossier autre patient portail",
@@ -100,6 +102,14 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         cls.accepted_case_draft_request = cls.accepted_case_payment_requests[0]
         cls.accepted_case_validated_request = cls.accepted_case_payment_requests[1]
         cls.accepted_case_paid_request = cls.accepted_case_payment_requests[2]
+        cls.accepted_case_validated_request.message_post(
+            body="Commentaire demande visible patient.",
+            subtype_xmlid="mail.mt_comment",
+        )
+        cls.accepted_case_validated_request.message_post(
+            body="Note interne demande invisible patient.",
+            subtype_xmlid="mail.mt_note",
+        )
         cls.case_document_attachments = cls.env["ir.attachment"].create(
             [
                 {
@@ -175,10 +185,20 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn("Nouvelle demande de paiement", detail_response.text)
         self.assertIn("Seances consommees", detail_response.text)
         self.assertIn("Seances restantes", detail_response.text)
+        self.assertIn("Echanges sur le dossier", detail_response.text)
+        self.assertIn("Commentaire dossier visible patient.", detail_response.text)
+        self.assertNotIn("Note interne dossier invisible patient.", detail_response.text)
         self.assertIn("Demande validee portail", detail_response.text)
         self.assertIn("Demande payee portail", detail_response.text)
+        self.assertIn("Commentaire demande visible patient.", detail_response.text)
+        self.assertNotIn("Note interne demande invisible patient.", detail_response.text)
         self.assertRegex(detail_response.text, r"160(?:[.,]00)")
         self.assertRegex(detail_response.text, r"40(?:[.,]00)")
+        self.assertIn(f'/my/evm/cases/{self.accepted_case.id}/comments/post', detail_response.text)
+        self.assertIn(
+            f'/my/evm/payment-requests/{self.accepted_case_validated_request.id}/comments/post',
+            detail_response.text,
+        )
 
     def test_patient_portal_case_detail_shows_aggregated_document_space_for_own_case(self):
         self.authenticate(self.patient_login, self.patient_password)
@@ -309,6 +329,120 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertNotIn("Motif de retour", response_text)
         self.assertIn("Historique des echanges", response_text)
         self.assertIn("Demande de paiement completee puis soumise a nouveau par le patient", response_text)
+
+    def test_patient_portal_can_post_case_comment_on_own_case(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        post_response = self.url_open(
+            f"/my/evm/cases/{self.accepted_case.id}/comments/post",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "comment": "Question patient via portail sur le dossier.",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(post_response.status_code, 303)
+        self.assertRegex(post_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+
+        refreshed_case = self.env["evm.case"].browse(self.accepted_case.id)
+        self.assertTrue(
+            any("Question patient via portail sur le dossier." in (body or "") for body in refreshed_case.message_ids.mapped("body"))
+        )
+
+        success_response = self.url_open(post_response.headers["Location"])
+        response_text = html.unescape(success_response.text)
+        self.assertIn("Votre commentaire a ete ajoute au dossier.", response_text)
+        self.assertIn("Patient Paiement", response_text)
+        self.assertIn("Question patient via portail sur le dossier.", response_text)
+
+    def test_patient_portal_can_post_payment_request_comment_on_own_request(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        post_response = self.url_open(
+            f"/my/evm/payment-requests/{self.accepted_case_validated_request.id}/comments/post",
+            data={
+                "csrf_token": self._extract_csrf_token(detail_response.text),
+                "payment_request_page": "1",
+                "document_page": "1",
+                "comment": "Question patient via portail sur la demande.",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(post_response.status_code, 303)
+        self.assertRegex(post_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}$")
+
+        refreshed_request = self.env["evm.payment_request"].browse(self.accepted_case_validated_request.id)
+        self.assertTrue(
+            any("Question patient via portail sur la demande." in (body or "") for body in refreshed_request.message_ids.mapped("body"))
+        )
+
+        success_response = self.url_open(post_response.headers["Location"])
+        response_text = html.unescape(success_response.text)
+        self.assertIn("Votre commentaire a ete ajoute a la demande.", response_text)
+        self.assertIn("Patient Paiement", response_text)
+        self.assertIn("Question patient via portail sur la demande.", response_text)
+
+    def test_patient_portal_comment_routes_reject_inaccessible_targets(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        detail_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}")
+        csrf_token = self._extract_csrf_token(detail_response.text)
+
+        case_response = self.url_open(
+            f"/my/evm/cases/{self.other_case.id}/comments/post",
+            data={
+                "csrf_token": csrf_token,
+                "comment": "Commentaire interdit",
+            },
+            allow_redirects=False,
+        )
+        request_response = self.url_open(
+            f"/my/evm/payment-requests/{self.other_case_payment_request.id}/comments/post",
+            data={
+                "csrf_token": csrf_token,
+                "payment_request_page": "1",
+                "document_page": "1",
+                "comment": "Commentaire interdit",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(case_response.status_code, 303)
+        self.assertTrue(case_response.headers["Location"].endswith("/my/evm/cases"))
+        self.assertEqual(request_response.status_code, 303)
+        self.assertTrue(request_response.headers["Location"].endswith("/my/evm/cases"))
+
+    def test_patient_portal_case_comment_keeps_pagination_context(self):
+        self.authenticate(self.patient_login, self.patient_password)
+        for index in range(35):
+            self._create_workflow_payment_request(
+                {
+                    "name": f"Demande commentaire pagination {index:02d}",
+                    "case_id": self.accepted_case.id,
+                    "sessions_count": 1,
+                    "state": "draft",
+                }
+            )
+
+        second_page_response = self.url_open(f"/my/evm/cases/{self.accepted_case.id}/page/2?document_page=2")
+        self.assertEqual(second_page_response.status_code, 200)
+
+        post_response = self.url_open(
+            f"/my/evm/cases/{self.accepted_case.id}/comments/post",
+            data={
+                "csrf_token": self._extract_csrf_token(second_page_response.text),
+                "payment_request_page": "2",
+                "document_page": "2",
+                "comment": "Commentaire avec pagination conservee.",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(post_response.status_code, 303)
+        self.assertRegex(post_response.headers["Location"], rf"/my/evm/cases/{self.accepted_case.id}/page/2\?document_page=2$")
 
     def test_patient_portal_case_detail_can_update_request_to_complete_before_resubmission(self):
         payment_request = self._create_workflow_payment_request(
