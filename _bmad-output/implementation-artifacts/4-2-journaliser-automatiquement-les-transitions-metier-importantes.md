@@ -1,6 +1,6 @@
 # Story 4.2: Journaliser automatiquement les transitions metier importantes
 
-Status: review
+Status: done
 
 ## Story
 
@@ -81,8 +81,10 @@ GPT-5 Codex
 - Revue du `2026-03-18`: l'exposition des references internes `account.payment` dans l'historique public a ete corrigee avant validation.
 - Risque residuel accepte: la couverture comportementale des champs tracked ajoutes (`evm.case.patient_user_id`, `evm.payment_request.payment_id`) reste plus faible que le reste du workflow, mais elle est jugee acceptable pour cette iteration.
 - Risque residuel accepte: la cloture n'est pas couverte par cette story et reste explicitement reportee aux stories 4.4 et 4.5.
+- Revue de cloture du `2026-03-19`: aucun finding supplementaire sur les traces systeme, la segregation public/interne ou le tracking workflow. Validation repo confirmee par `make quality-lint` et `make quality-smoke` ; le web tour E2E reste saute faute de Chrome, conformement au test summary existant.
 
 ## Change Log
 
 - `2026-03-18`: uniformisation des traces systeme des transitions metier dossier/demande, ajout du tracking workflow manquant et couverture de test sur les parcours critiques.
 - `2026-03-18`: revue finalisee avec correction de l'exposition des references de paiement cote portail et acceptation explicite des risques residuels restants.
+- `2026-03-19`: cloture de la story apres revue finale sans finding supplementaire et validation lint/smoke verte.

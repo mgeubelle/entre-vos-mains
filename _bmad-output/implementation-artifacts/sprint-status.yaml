@@ -69,9 +69,9 @@ development_status:
   3-7-permettre-a-la-fondation-de-confirmer-un-paiement-effectue-hors-plateforme: done
   epic-3-retrospective: optional
 
-  epic-4: in-progress
+  epic-4: done
   4-1-permettre-les-commentaires-et-echanges-asynchrones-sur-les-dossiers-et-demandes: done
-  4-2-journaliser-automatiquement-les-transitions-metier-importantes: review
+  4-2-journaliser-automatiquement-les-transitions-metier-importantes: done
   4-3-notifier-les-acteurs-sur-les-evenements-cles-du-workflow: done
   4-4-cloturer-operationnellement-un-dossier-selon-les-regles-metier: done
   4-5-executer-une-cloture-automatique-des-dossiers-via-tache-planifiee: done

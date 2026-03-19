@@ -109,6 +109,36 @@ make quality-lint
 make quality-smoke
 ```
 
+## Tests E2E web tour
+
+Les tests E2E UI Odoo de type `HttpCase.start_tour(...)` ne tournent pas seulement avec `--test-tags`.
+Le conteneur `odoo-19` doit aussi fournir les prerequis runtime utilises par Odoo:
+
+- le module Python `websocket-client`
+- un navigateur Chrome/Chromium reellement executable dans le `PATH`
+
+Dans ce projet, le test E2E cible peut etre lance ainsi:
+
+```bash
+docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-compose.yml \
+  exec -T odoo-19 sh -lc \
+  "odoo -c /etc/odoo/odoo.conf --db_host=db --db_port=5432 -r odoo -w odoo \
+  -d evm_dev --http-port=8078 --stop-after-init -u evm --test-enable \
+  --test-tags '/evm/tests/test_payment_request_web_tour.py'"
+```
+
+Etat constate le 2026-03-19 sur le stack local partage:
+
+- le test est bien decouvert et demarre
+- `websocket-client` est disponible
+- Odoo saute ensuite le test avec `Chrome executable not found`
+
+Important:
+
+- sur Ubuntu 24.04 dans un conteneur, `chromium-browser` peut n'etre qu'un paquet de transition vers Snap, donc insuffisant pour `HttpCase`
+- la solution durable consiste a deriver l'image `odoo:19` pour y installer `google-chrome-stable` ou un binaire Chromium equivalent, puis a rebuilder le service `odoo-19`
+- sans ce binaire, les web tours resteront `skipped` meme si le code du test et les assets JS sont corrects
+
 Notes d'usage:
 
 - `uvx` telecharge `ruff` a la premiere execution puis reutilise le cache local
