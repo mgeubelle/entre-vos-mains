@@ -1,8 +1,11 @@
-from datetime import timedelta
+import logging
+from datetime import datetime, time, timedelta
 
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tools import email_normalize, plaintext2html, single_email_re
+
+_logger = logging.getLogger(__name__)
 
 
 class EvmCase(models.Model):
@@ -414,6 +417,25 @@ class EvmCase(models.Model):
             reason=self._get_closure_reason_label(eligibility.get("reason_code")),
         )
 
+    @api.model
+    def _get_auto_close_candidate_domain(self, today=None):
+        today = today or fields.Date.context_today(self)
+        counted_payment_request_domain = [("payment_request_ids.state", "in", list(self._session_balance_counted_states))]
+        closure_delay_days = self._get_closure_delay_days()
+        if not closure_delay_days:
+            return [("state", "=", "accepted")] + counted_payment_request_domain
+
+        delay_cutoff_date = today - timedelta(days=closure_delay_days)
+        create_date_cutoff = fields.Datetime.to_string(datetime.combine(delay_cutoff_date + timedelta(days=1), time.min))
+        delay_domain = [
+            "|",
+            ("foundation_decision_date", "<=", delay_cutoff_date),
+            "&",
+            ("foundation_decision_date", "=", False),
+            ("create_date", "<", create_date_cutoff),
+        ]
+        return [("state", "=", "accepted"), "|"] + delay_domain + counted_payment_request_domain
+
     def _close_case(self, close_origin="manual"):
         for record in self:
             eligibility = record._get_closure_eligibility()
@@ -426,10 +448,15 @@ class EvmCase(models.Model):
     @api.model
     def _cron_auto_close_cases(self):
         closed_cases = self.browse()
-        for case in self.search([("state", "=", "accepted")]):
-            if case._get_closure_eligibility()["eligible"]:
-                case._close_case(close_origin="automatic")
-                closed_cases |= case
+        today = fields.Date.context_today(self)
+        for case in self.search(self._get_auto_close_candidate_domain(today=today)):
+            try:
+                with self.env.cr.savepoint():
+                    if case._get_closure_eligibility(today=today)["eligible"]:
+                        case._close_case(close_origin="automatic")
+                        closed_cases |= case
+            except Exception:
+                _logger.exception("Le cron de cloture automatique a echoue pour le dossier %s (%s).", case.id, case.name)
         return len(closed_cases)
 
     def _notify_patient_case_event(self, event_key, ensure_partner=False):

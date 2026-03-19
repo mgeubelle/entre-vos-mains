@@ -350,6 +350,94 @@ class TestEvmCaseReview(TransactionCase):
             any("automatiquement par la plateforme" in (body or "") for body in eligible_case.message_ids.mapped("body"))
         )
 
+    def test_auto_close_cron_closes_session_cap_candidates_without_scanning_recent_idle_cases(self):
+        quota_case = self._create_accepted_case(
+            authorized=4,
+            requested=4,
+            suffix="CronQuotaReached",
+        )
+        self.env["evm.payment_request"].with_context(evm_allow_payment_request_workflow_write=True).create(
+            {
+                "name": "Demande payee quota atteint",
+                "case_id": quota_case.id,
+                "sessions_count": 4,
+                "state": "paid",
+            }
+        )
+
+        closed_count = self.case_model._cron_auto_close_cases()
+
+        self.assertEqual(closed_count, 1)
+        self.assertEqual(quota_case.state, "closed")
+        self.assertTrue(
+            any("automatiquement par la plateforme" in (body or "") for body in quota_case.message_ids.mapped("body"))
+        )
+
+    def test_auto_close_cron_keeps_cases_with_active_payment_requests_open(self):
+        eligible_case = self._create_accepted_case(
+            authorized=6,
+            requested=6,
+            suffix="CronDelayEligible",
+            decision_date=fields.Date.context_today(self.case_model) - timedelta(days=91),
+        )
+        blocked_case = self._create_accepted_case(
+            authorized=4,
+            requested=4,
+            suffix="CronBlockedActiveRequest",
+        )
+        self.env["evm.payment_request"].with_context(evm_allow_payment_request_workflow_write=True).create(
+            [
+                {
+                    "name": "Demande payee cloture automatique",
+                    "case_id": blocked_case.id,
+                    "sessions_count": 4,
+                    "state": "paid",
+                },
+                {
+                    "name": "Demande encore active",
+                    "case_id": blocked_case.id,
+                    "sessions_count": 1,
+                    "state": "draft",
+                },
+            ]
+        )
+
+        closed_count = self.case_model._cron_auto_close_cases()
+
+        self.assertEqual(closed_count, 1)
+        self.assertEqual(eligible_case.state, "closed")
+        self.assertEqual(blocked_case.state, "accepted")
+
+    def test_auto_close_cron_continues_after_single_case_failure(self):
+        self.config_parameters.set_param("evm.case_closure_delay_days", "30")
+        today = fields.Date.context_today(self.case_model)
+        failing_case = self._create_accepted_case(
+            authorized=8,
+            requested=8,
+            suffix="CronFailingCase",
+            decision_date=today - timedelta(days=31),
+        )
+        succeeding_case = self._create_accepted_case(
+            authorized=8,
+            requested=8,
+            suffix="CronSucceedingCase",
+            decision_date=today - timedelta(days=31),
+        )
+        original_close_case = type(self.case_model)._close_case
+
+        def flaky_close_case(recordset, close_origin="manual"):
+            recordset.ensure_one()
+            if recordset.id == failing_case.id:
+                raise ValidationError("Erreur de cloture simulee")
+            return original_close_case(recordset, close_origin=close_origin)
+
+        with patch.object(type(self.case_model), "_close_case", autospec=True, side_effect=flaky_close_case):
+            closed_count = self.case_model._cron_auto_close_cases()
+
+        self.assertEqual(closed_count, 1)
+        self.assertEqual(failing_case.state, "accepted")
+        self.assertEqual(succeeding_case.state, "closed")
+
     def test_accept_action_sends_patient_notification_email(self):
         case = self._create_pending_case(requested=12, suffix="NotifyAccept")
         self.fondation_user.write({"notification_type": "inbox"})
