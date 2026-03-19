@@ -18,6 +18,16 @@
                                 Definir `0` pour desactiver le controle du plafond annuel.
                             </div>
                         </setting>
+                        <setting
+                            id="evm_case_closure_delay_days_setting"
+                            string="Delai de cloture automatique"
+                            help="Rend un dossier accepte eligible a la cloture automatique apres le delai configure."
+                        >
+                            <field name="evm_case_closure_delay_days"/>
+                            <div class="text-muted">
+                                Definir `0` pour desactiver le critere de delai projet. La valeur par defaut est de 90 jours.
+                            </div>
+                        </setting>
                     </block>
                 </app>
             </xpath>

@@ -60,7 +60,15 @@ class TestEvmSecurity(TransactionCase):
     def test_patient_case_record_rule_requires_connected_user_and_accepted_state(self):
         rule = self.env.ref("evm.evm_case_rule_patient_own")
 
-        self.assertEqual(rule.domain_force, "[('patient_user_id', '=', user.id), ('state', '=', 'accepted')]")
+        self.assertEqual(rule.domain_force, "[('patient_user_id', '=', user.id), ('state', 'in', ('accepted', 'closed'))]")
+
+    def test_patient_payment_request_record_rule_allows_closed_case_read_access(self):
+        rule = self.env.ref("evm.evm_payment_request_rule_patient_own")
+
+        self.assertEqual(
+            rule.domain_force,
+            "[('patient_user_id', '=', user.id), ('case_id.state', 'in', ('accepted', 'closed'))]",
+        )
 
     def _create_security_fixture(self):
         kine_user = new_test_user(self.env, login="kine1", groups="evm.group_evm_kine")
@@ -285,6 +293,36 @@ class TestEvmSecurity(TransactionCase):
         )
         fondation_case.with_user(fixture["fondation_user"]).write({"name": "Dossier fondation maj"})
         self.assertEqual(fondation_case.name, "Dossier fondation maj")
+
+    def test_patient_can_read_closed_case_and_related_payment_request_without_regaining_pending_access(self):
+        fixture = self._create_security_fixture()
+        closed_case = self.env["evm.case"].create(
+            {
+                "name": "Dossier cloture patient A",
+                "kine_user_id": fixture["other_kine_user"].id,
+                "patient_user_id": fixture["patient_user"].id,
+                "state": "closed",
+            }
+        )
+        closed_request = self.env["evm.payment_request"].with_context(evm_allow_payment_request_workflow_write=True).create(
+            {
+                "name": "Demande cloturee patient A",
+                "case_id": closed_case.id,
+                "sessions_count": 1,
+                "state": "refused",
+            }
+        )
+
+        self.assertEqual(self.env["evm.case"].with_user(fixture["patient_user"]).search([("id", "=", closed_case.id)]), closed_case)
+        self.assertEqual(
+            self.env["evm.payment_request"].with_user(fixture["patient_user"]).search([("id", "=", closed_request.id)]),
+            closed_request,
+        )
+        self.assertFalse(
+            self.env["evm.case"].with_user(fixture["patient_user"]).search(
+                [("id", "=", fixture["case_pending_same_patient"].id)]
+            )
+        )
 
     def test_patient_payment_request_mutations_are_limited_to_resumable_payload_states(self):
         fixture = self._create_security_fixture()

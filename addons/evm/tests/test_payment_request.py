@@ -214,6 +214,31 @@ class TestEvmPaymentRequest(TransactionCase):
                 }
             )
 
+    def test_patient_cannot_mutate_or_comment_on_request_when_related_case_is_closed(self):
+        closed_case = self.env["evm.case"].create(
+            {
+                "name": "Dossier cloture mutation",
+                "kine_user_id": self.kine_user.id,
+                "patient_user_id": self.patient_user.id,
+                "state": "closed",
+                "requested_session_count": 8,
+                "authorized_session_count": 8,
+            }
+        )
+        payment_request = self._create_internal_payment_request(
+            {
+                "name": "Demande brouillon dossier clos",
+                "case_id": closed_case.id,
+                "sessions_count": 2,
+                "state": "draft",
+            }
+        )
+
+        with self.assertRaisesRegex(AccessError, "lecture"):
+            payment_request.with_user(self.patient_user).write({"name": "Tentative tardive"})
+        with self.assertRaisesRegex(AccessError, "lecture"):
+            payment_request.with_user(self.patient_user).action_post_comment("Commentaire tardif")
+
     def test_patient_cannot_inject_system_fields_when_creating_a_request(self):
         existing_payment = self.env["account.payment"].sudo().create(
             {

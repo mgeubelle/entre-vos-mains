@@ -16,7 +16,7 @@ class EvmCustomerPortal(CustomerPortal):
             return default
 
     def _get_kine_case_domain(self):
-        return [("kine_user_id", "=", request.env.user.id)]
+        return [("kine_user_id", "=", request.env.user.id), ("state", "!=", "closed")]
 
     def _get_patient_case_domain(self):
         return [("patient_user_id", "=", request.env.user.id), ("state", "=", "accepted")]
@@ -338,7 +338,7 @@ class EvmCustomerPortal(CustomerPortal):
             case_sudo = self._document_check_access("evm.case", case_id)
         except (AccessError, MissingError):
             return None
-        if case_sudo.patient_user_id != request.env.user or case_sudo.state != "accepted":
+        if case_sudo.patient_user_id != request.env.user or case_sudo.state not in ("accepted", "closed"):
             return None
         return case_sudo
 
@@ -691,6 +691,8 @@ class EvmCustomerPortal(CustomerPortal):
         case_sudo = self._get_patient_case_or_redirect(case_id)
         if not case_sudo:
             return request.redirect("/my")
+        if case_sudo.state != "accepted":
+            return request.redirect(f"/my/evm/cases/{case_sudo.id}")
 
         created_request = self._pop_created_payment_request_flash(case_sudo.id)
         if created_request and created_request.case_id != case_sudo:
@@ -712,6 +714,8 @@ class EvmCustomerPortal(CustomerPortal):
         case_sudo = self._get_patient_case_or_redirect(case_id)
         if not case_sudo:
             return request.redirect("/my")
+        if case_sudo.state != "accepted":
+            return request.redirect(f"/my/evm/cases/{case_sudo.id}")
 
         payment_request_model = request.env["evm.payment_request"]
         submission_mode = (post.get("submission_mode") or "draft").strip()

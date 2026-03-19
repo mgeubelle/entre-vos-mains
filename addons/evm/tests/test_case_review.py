@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from odoo import fields
@@ -19,6 +20,7 @@ class TestEvmCaseReview(TransactionCase):
     def setUp(self):
         super().setUp()
         self.config_parameters.set_param("evm.annual_session_cap", "0")
+        self.config_parameters.set_param("evm.case_closure_delay_days", "90")
 
     def _create_pending_case(self, requested=12, suffix="A"):
         case = self.case_model.create(
@@ -36,6 +38,22 @@ class TestEvmCaseReview(TransactionCase):
         case.with_user(self.fondation_user).write({"authorized_session_count": authorized})
         case.with_user(self.fondation_user).action_accept()
         return case
+
+    def _create_accepted_case(self, authorized=12, requested=None, suffix="AcceptedCase", decision_date=None):
+        requested = requested or authorized
+        return self.case_model.create(
+            {
+                "name": f"Dossier cloture {suffix}",
+                "kine_user_id": self.kine_user.id,
+                "patient_name": f"Patient cloture {suffix}",
+                "patient_email": f"patient.closure.{suffix.lower()}@example.com",
+                "requested_session_count": requested,
+                "authorized_session_count": authorized,
+                "state": "accepted",
+                "foundation_decision_user_id": self.fondation_user.id,
+                "foundation_decision_date": decision_date or fields.Date.context_today(self.case_model),
+            }
+        )
 
     def _capture_mail_ids(self):
         return set(self.env["mail.mail"].sudo().search([]).ids)
@@ -218,6 +236,120 @@ class TestEvmCaseReview(TransactionCase):
             "Le refus doit etre trace dans le chatter.",
         )
 
+    def test_close_action_updates_case_and_history_when_authorized_sessions_are_consumed(self):
+        case = self._create_accepted_case(authorized=6, requested=8, suffix="QuotaReached")
+        self.env["evm.payment_request"].with_context(evm_allow_payment_request_workflow_write=True).create(
+            {
+                "name": "Demande payee cloture",
+                "case_id": case.id,
+                "sessions_count": 6,
+                "state": "paid",
+            }
+        )
+
+        eligibility = case._get_closure_eligibility()
+
+        self.assertTrue(eligibility["eligible"])
+        self.assertEqual(eligibility["reason_code"], "session_cap")
+
+        case.with_user(self.fondation_user).action_close()
+
+        self.assertEqual(case.state, "closed")
+        self.assertTrue(
+            any("Dossier cloture" in (body or "") for body in case.message_ids.mapped("body")),
+            "La cloture doit laisser une trace exploitable dans le chatter.",
+        )
+        self.assertTrue(
+            any("nouvelle demande" in (body or "").lower() for body in case.message_ids.mapped("body")),
+            "La cloture doit rappeler qu'une nouvelle prise en charge exige une nouvelle demande.",
+        )
+
+    def test_close_action_accepts_delay_rule_when_project_delay_is_reached(self):
+        today = fields.Date.context_today(self.case_model)
+        self.config_parameters.set_param("evm.case_closure_delay_days", "30")
+        delay_days = self.case_model._get_closure_delay_days()
+        case = self._create_accepted_case(
+            authorized=10,
+            requested=10,
+            suffix="DelayReached",
+            decision_date=today - timedelta(days=delay_days + 1),
+        )
+
+        eligibility = case._get_closure_eligibility()
+
+        self.assertTrue(eligibility["eligible"])
+        self.assertEqual(eligibility["reason_code"], "delay")
+        self.assertEqual(eligibility["delay_reference_date"], case.foundation_decision_date)
+
+    def test_close_action_uses_project_configured_delay_rule(self):
+        today = fields.Date.context_today(self.case_model)
+        self.config_parameters.set_param("evm.case_closure_delay_days", "60")
+        case = self._create_accepted_case(
+            authorized=10,
+            requested=10,
+            suffix="ConfiguredDelay",
+            decision_date=today - timedelta(days=31),
+        )
+
+        self.assertFalse(case._get_closure_eligibility()["eligible"])
+
+        self.config_parameters.set_param("evm.case_closure_delay_days", "30")
+        self.assertTrue(case._get_closure_eligibility()["eligible"])
+        self.assertEqual(case._get_closure_eligibility()["reason_code"], "delay")
+
+    def test_close_action_rejects_non_eligible_or_workflow_blocking_cases(self):
+        recent_case = self._create_accepted_case(authorized=10, requested=10, suffix="Recent")
+        blocked_case = self._create_accepted_case(authorized=4, requested=4, suffix="Blocked")
+        self.env["evm.payment_request"].with_context(evm_allow_payment_request_workflow_write=True).create(
+            [
+                {
+                    "name": "Demande payee cloture bloquee",
+                    "case_id": blocked_case.id,
+                    "sessions_count": 4,
+                    "state": "paid",
+                },
+                {
+                    "name": "Demande brouillon encore active",
+                    "case_id": blocked_case.id,
+                    "sessions_count": 1,
+                    "state": "draft",
+                },
+            ]
+        )
+
+        self.assertFalse(recent_case._get_closure_eligibility()["eligible"])
+        self.assertFalse(blocked_case._get_closure_eligibility()["eligible"])
+
+        with self.assertRaisesRegex(ValidationError, "pas eligible"):
+            recent_case.with_user(self.fondation_user).action_close()
+        with self.assertRaisesRegex(ValidationError, "demande de paiement active"):
+            blocked_case.with_user(self.fondation_user).action_close()
+
+    def test_auto_close_cron_closes_only_eligible_cases_and_traces_automatic_origin(self):
+        self.config_parameters.set_param("evm.case_closure_delay_days", "30")
+        today = fields.Date.context_today(self.case_model)
+        eligible_case = self._create_accepted_case(
+            authorized=8,
+            requested=8,
+            suffix="CronEligible",
+            decision_date=today - timedelta(days=31),
+        )
+        ineligible_case = self._create_accepted_case(
+            authorized=8,
+            requested=8,
+            suffix="CronRecent",
+            decision_date=today - timedelta(days=5),
+        )
+
+        closed_count = self.case_model._cron_auto_close_cases()
+
+        self.assertEqual(closed_count, 1)
+        self.assertEqual(eligible_case.state, "closed")
+        self.assertEqual(ineligible_case.state, "accepted")
+        self.assertTrue(
+            any("automatiquement par la plateforme" in (body or "") for body in eligible_case.message_ids.mapped("body"))
+        )
+
     def test_accept_action_sends_patient_notification_email(self):
         case = self._create_pending_case(requested=12, suffix="NotifyAccept")
         self.fondation_user.write({"notification_type": "inbox"})
@@ -323,14 +455,21 @@ class TestEvmCaseReview(TransactionCase):
         settings_arch = self.env.ref("evm.evm_res_config_settings_view_form").arch_db
 
         self.assertIn("search_default_pending", action.context or "")
+        self.assertIn("search_default_active", action.context or "")
+        self.assertIn('name="active"', search_arch)
+        self.assertIn('name="closed"', search_arch)
         self.assertIn('name="pending"', search_arch)
         self.assertIn('name="action_accept"', form_arch)
         self.assertIn('name="action_refuse"', form_arch)
+        self.assertIn('name="action_close"', form_arch)
         self.assertIn('name="patient_name" readonly="state != \'draft\'"', form_arch)
         self.assertIn('name="requested_session_count" readonly="state != \'draft\'"', form_arch)
         self.assertIn('name="annual_session_cap_remaining"', form_arch)
         self.assertIn("evm_annual_session_cap", self.env["res.config.settings"]._fields)
+        self.assertIn("evm_case_closure_delay_days", self.env["res.config.settings"]._fields)
         self.assertIn('name="evm_annual_session_cap"', settings_arch)
+        self.assertIn('name="evm_case_closure_delay_days"', settings_arch)
+        self.assertEqual(self.env.ref("evm.evm_ir_cron_auto_close_cases").model_id.model, "evm.case")
 
     def test_case_form_exposes_payment_request_notebook_with_expected_columns(self):
         form_arch = self.env.ref("evm.evm_case_view_form").arch_db

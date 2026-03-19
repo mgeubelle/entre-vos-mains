@@ -168,6 +168,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             evm_allow_payment_request_workflow_write=True
         ).create(values)
         return self.env["evm.payment_request"].browse(payment_request.ids)
+
     def test_patient_portal_pages_show_case_access_and_payment_request_entrypoints(self):
         self.authenticate(self.patient_login, self.patient_password)
 
@@ -199,6 +200,62 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             f'/my/evm/payment-requests/{self.accepted_case_validated_request.id}/comments/post',
             detail_response.text,
         )
+
+    def test_patient_portal_closed_case_stays_consultable_but_leaves_active_list_and_hides_actions(self):
+        closed_case = self.env["evm.case"].create(
+            {
+                "name": "Dossier patient cloture portail",
+                "kine_user_id": self.kine_user.id,
+                "patient_user_id": self.patient_user.id,
+                "state": "closed",
+                "requested_session_count": 12,
+                "authorized_session_count": 12,
+            }
+        )
+        closed_request = self._create_workflow_payment_request(
+            {
+                "name": "Demande payee dossier clos",
+                "case_id": closed_case.id,
+                "sessions_count": 2,
+                "state": "refused",
+                "amount_total": 80.0,
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        list_response = self.url_open("/my/evm/cases")
+        detail_response = self.url_open(f"/my/evm/cases/{closed_case.id}")
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertNotIn(closed_case.name, list_response.text)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn(closed_case.name, detail_response.text)
+        self.assertIn("Cloture", detail_response.text)
+        self.assertIn(closed_request.name, detail_response.text)
+        self.assertNotIn(f'/my/evm/cases/{closed_case.id}/payment-requests/new', detail_response.text)
+        self.assertNotIn(f'/my/evm/cases/{closed_case.id}/comments/post', detail_response.text)
+        self.assertNotIn(f'/my/evm/payment-requests/{closed_request.id}/comments/post', detail_response.text)
+
+    def test_patient_portal_closed_case_redirects_payment_request_creation_form_to_case_detail(self):
+        closed_case = self.env["evm.case"].create(
+            {
+                "name": "Dossier patient cloture redirection",
+                "kine_user_id": self.kine_user.id,
+                "patient_user_id": self.patient_user.id,
+                "state": "closed",
+                "requested_session_count": 10,
+                "authorized_session_count": 10,
+            }
+        )
+        self.authenticate(self.patient_login, self.patient_password)
+
+        response = self.url_open(
+            f"/my/evm/cases/{closed_case.id}/payment-requests/new",
+            allow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertRegex(response.headers["Location"], rf"/my/evm/cases/{closed_case.id}$")
 
     def test_patient_portal_case_detail_shows_aggregated_document_space_for_own_case(self):
         self.authenticate(self.patient_login, self.patient_password)

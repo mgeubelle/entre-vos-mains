@@ -52,6 +52,16 @@ class TestEvmKinePortal(HttpCase):
                 "requested_session_count": 10,
             }
         )
+        cls.closed_case = cls.env["evm.case"].create(
+            {
+                "name": "Dossier cloture kine",
+                "kine_user_id": cls.kine_user.id,
+                "patient_user_id": cls.patient_user.id,
+                "state": "closed",
+                "requested_session_count": 12,
+                "authorized_session_count": 12,
+            }
+        )
 
     def test_kine_portal_pages_show_case_list_and_detail(self):
         self.authenticate(self.kine_login, self.kine_password)
@@ -84,6 +94,19 @@ class TestEvmKinePortal(HttpCase):
 
         self.assertEqual(response.status_code, 303)
         self.assertTrue(response.headers["Location"].endswith("/my/evm/cases"))
+
+    def test_kine_closed_case_is_hidden_from_active_list_but_detail_stays_read_only(self):
+        self.authenticate(self.kine_login, self.kine_password)
+
+        list_response = self.url_open("/my/evm/cases")
+        detail_response = self.url_open(f"/my/evm/cases/{self.closed_case.id}")
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertNotIn(self.closed_case.name, list_response.text)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn(self.closed_case.name, detail_response.text)
+        self.assertIn("Cloture", detail_response.text)
+        self.assertNotIn(f'/my/evm/cases/{self.closed_case.id}/comments/post', detail_response.text)
 
     def test_kine_portal_can_post_comment_on_own_case(self):
         self.authenticate(self.kine_login, self.kine_password)

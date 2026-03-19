@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tools import email_normalize, plaintext2html, single_email_re
@@ -9,6 +11,8 @@ class EvmCase(models.Model):
     _description = "EVM Case"
     _order = "create_date desc, id desc"
     _session_balance_counted_states = ("validated", "paid", "closed")
+    _default_closure_delay_days = 90
+    _closure_blocking_payment_request_states = ("draft", "submitted", "to_complete")
 
     name = fields.Char(required=True, string="Nom", tracking=True)
     state = fields.Selection(
@@ -201,6 +205,8 @@ class EvmCase(models.Model):
 
     def _check_comment_post_access(self):
         self.ensure_one()
+        if self.state == "closed":
+            raise AccessError(_("Ce dossier est cloture et reste consultable en lecture."))
         user = self.env.user
         if user.has_group("evm.group_evm_admin") or user.has_group("evm.group_evm_fondation"):
             return
@@ -309,6 +315,122 @@ class EvmCase(models.Model):
                 "url": False,
             }
         return {}
+
+    def _get_closure_delay_reference_date(self):
+        self.ensure_one()
+        return self.foundation_decision_date or fields.Date.to_date(self.create_date)
+
+    def _get_closure_delay_days(self):
+        raw_value = self.env["ir.config_parameter"].sudo().get_param(
+            "evm.case_closure_delay_days",
+            default=str(self._default_closure_delay_days),
+        )
+        try:
+            return max(int(raw_value or 0), 0)
+        except (TypeError, ValueError):
+            return self._default_closure_delay_days
+
+    def _get_closure_eligibility(self, today=None):
+        self.ensure_one()
+        today = today or fields.Date.context_today(self)
+        closure_delay_days = self._get_closure_delay_days()
+        delay_reference_date = self._get_closure_delay_reference_date()
+        delay_cutoff_date = today - timedelta(days=closure_delay_days) if closure_delay_days else False
+        active_payment_requests = self.payment_request_ids.filtered(
+            lambda payment_request: payment_request.state in self._closure_blocking_payment_request_states
+        )
+        session_cap_reached = bool(self.authorized_session_count) and self.remaining_session_count <= 0
+        delay_reached = bool(delay_cutoff_date and delay_reference_date and delay_reference_date <= delay_cutoff_date)
+
+        if self.state != "accepted":
+            return {
+                "eligible": False,
+                "reason_code": "state",
+                "reason_message": _("Ce dossier n'est pas eligible a la cloture: seul un dossier accepte peut etre cloture."),
+                "session_cap_reached": session_cap_reached,
+                "delay_reached": delay_reached,
+                "delay_reference_date": delay_reference_date,
+                "active_payment_request_ids": active_payment_requests.ids,
+            }
+        if active_payment_requests:
+            return {
+                "eligible": False,
+                "reason_code": "active_payment_request",
+                "reason_message": _(
+                    "Ce dossier n'est pas eligible a la cloture: une demande de paiement active doit d'abord etre finalisee."
+                ),
+                "session_cap_reached": session_cap_reached,
+                "delay_reached": delay_reached,
+                "delay_reference_date": delay_reference_date,
+                "active_payment_request_ids": active_payment_requests.ids,
+            }
+        if session_cap_reached and delay_reached:
+            reason_code = "session_cap_and_delay"
+        elif session_cap_reached:
+            reason_code = "session_cap"
+        elif delay_reached:
+            reason_code = "delay"
+        else:
+            return {
+                "eligible": False,
+                "reason_code": "conditions_not_met",
+                "reason_message": _(
+                    "Ce dossier n'est pas eligible a la cloture: ni le quota de seances ni le delai projet n'ont ete atteints."
+                ),
+                "session_cap_reached": session_cap_reached,
+                "delay_reached": delay_reached,
+                "delay_reference_date": delay_reference_date,
+                "active_payment_request_ids": [],
+            }
+        return {
+            "eligible": True,
+            "reason_code": reason_code,
+            "reason_message": False,
+            "session_cap_reached": session_cap_reached,
+            "delay_reached": delay_reached,
+            "delay_reference_date": delay_reference_date,
+            "active_payment_request_ids": [],
+        }
+
+    @api.model
+    def _get_closure_reason_label(self, reason_code):
+        mapping = {
+            "session_cap": _("quota de seances atteint"),
+            "delay": _("delai projet atteint"),
+            "session_cap_and_delay": _("quota de seances et delai projet atteints"),
+        }
+        return mapping.get(reason_code, _("regles metier atteintes"))
+
+    def _build_closure_message(self, eligibility, close_origin="manual"):
+        self.ensure_one()
+        origin_label = (
+            _("par la fondation")
+            if close_origin == "manual"
+            else _("automatiquement par la plateforme")
+        )
+        return _(
+            "Dossier cloture %(origin)s. Motif: %(reason)s. Une nouvelle demande doit etre introduite pour toute nouvelle prise en charge.",
+            origin=origin_label,
+            reason=self._get_closure_reason_label(eligibility.get("reason_code")),
+        )
+
+    def _close_case(self, close_origin="manual"):
+        for record in self:
+            eligibility = record._get_closure_eligibility()
+            if not eligibility["eligible"]:
+                raise ValidationError(eligibility["reason_message"])
+            record.with_context(evm_allow_case_workflow_write=True).write({"state": "closed"})
+            record._post_system_message(record._build_closure_message(eligibility, close_origin=close_origin))
+        return True
+
+    @api.model
+    def _cron_auto_close_cases(self):
+        closed_cases = self.browse()
+        for case in self.search([("state", "=", "accepted")]):
+            if case._get_closure_eligibility()["eligible"]:
+                case._close_case(close_origin="automatic")
+                closed_cases |= case
+        return len(closed_cases)
 
     def _notify_patient_case_event(self, event_key, ensure_partner=False):
         for record in self:
@@ -602,3 +724,7 @@ class EvmCase(models.Model):
                 record._post_system_message(internal_message, subtype_xmlid="mail.mt_note")
             record._notify_patient_case_event("refused", ensure_partner=True)
         return True
+
+    def action_close(self):
+        self._ensure_foundation_can_decide()
+        return self._close_case(close_origin="manual")

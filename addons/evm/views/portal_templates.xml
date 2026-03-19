@@ -159,7 +159,7 @@
                                 </div>
                             </div>
                             <p t-else="" class="text-muted mb-0">Aucune activite autorisee n'est encore disponible.</p>
-                            <form t-att-action="'/my/evm/cases/%s/comments/post' % case.id" method="post" class="mt-3">
+                            <form t-if="case.state != 'closed'" t-att-action="'/my/evm/cases/%s/comments/post' % case.id" method="post" class="mt-3">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                 <div class="mb-3">
                                     <label t-attf-for="case_comment_#{case.id}" class="form-label">Ajouter un commentaire</label>
@@ -175,6 +175,9 @@
                                     <button type="submit" class="btn btn-outline-primary">Envoyer le commentaire</button>
                                 </div>
                             </form>
+                            <div t-else="" class="alert alert-secondary mt-3 mb-0" role="alert">
+                                Ce dossier est cloture et reste consultable en lecture.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -233,12 +236,15 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                                 <div>
-                                    <p class="text-muted mb-1">Dossier accepte</p>
+                                    <p class="text-muted mb-1">
+                                        <t t-if="case.state == 'closed'">Dossier cloture</t>
+                                        <t t-else="">Dossier accepte</t>
+                                    </p>
                                     <h2 class="h4 mb-0">
                                         <span t-field="case.name"/>
                                     </h2>
                                 </div>
-                                <a t-att-href="'/my/evm/cases/%s/payment-requests/new' % case.id" class="btn btn-primary">
+                                <a t-if="case.state == 'accepted'" t-att-href="'/my/evm/cases/%s/payment-requests/new' % case.id" class="btn btn-primary">
                                     Nouvelle demande de paiement
                                 </a>
                             </div>
@@ -287,10 +293,13 @@
 
                             <div class="mt-3">
                                 <p class="text-muted mb-1">Prochaine action</p>
-                                <p class="mb-0">
+                                <p t-if="case.state == 'accepted'" class="mb-0">
                                     Utilisez le bouton
                                     <span class="fw-semibold">Nouvelle demande de paiement</span>
                                     lorsque vous souhaitez transmettre un remboursement.
+                                </p>
+                                <p t-else="" class="mb-0">
+                                    Ce dossier est cloture. Il reste consultable en lecture et une nouvelle demande est requise pour toute nouvelle prise en charge.
                                 </p>
                             </div>
                         </div>
@@ -321,7 +330,7 @@
                                 </div>
                             </div>
                             <p t-else="" class="text-muted">Aucun echange n'est encore disponible pour ce dossier.</p>
-                            <form t-att-action="'/my/evm/cases/%s/comments/post' % case.id" method="post" class="mt-3">
+                            <form t-if="case.state == 'accepted'" t-att-action="'/my/evm/cases/%s/comments/post' % case.id" method="post" class="mt-3">
                                 <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                 <input type="hidden" name="payment_request_page" t-att-value="payment_request_page"/>
                                 <input type="hidden" name="document_page" t-att-value="document_page"/>
@@ -339,6 +348,9 @@
                                     <button type="submit" class="btn btn-outline-primary">Envoyer le commentaire</button>
                                 </div>
                             </form>
+                            <div t-else="" class="alert alert-secondary mt-3 mb-0" role="alert">
+                                Ce dossier est cloture et reste consultable en lecture.
+                            </div>
                         </div>
                     </div>
 
@@ -397,7 +409,7 @@
                                             <div class="col-md-4">
                                                 <p class="text-muted mb-1">Modification</p>
                                                 <div class="fw-semibold">
-                                                    <t t-if="payment_request.state in ('draft', 'to_complete')">Modifiable</t>
+                                                    <t t-if="case.state == 'accepted' and payment_request.state in ('draft', 'to_complete')">Modifiable</t>
                                                     <t t-else="">Lecture seule</t>
                                                 </div>
                                             </div>
@@ -408,6 +420,16 @@
                                         </div>
                                     </summary>
                                     <div class="border-top p-3 pt-4">
+                                        <div
+                                            t-if="case.state == 'closed'"
+                                            class="alert alert-secondary border mb-3"
+                                            role="alert"
+                                        >
+                                            <p class="fw-semibold mb-1">Dossier cloture</p>
+                                            <p class="mb-0">
+                                                Les demandes associees restent visibles en lecture seule. Toute nouvelle prise en charge exige un nouveau dossier.
+                                            </p>
+                                        </div>
                                         <div
                                             t-if="payment_request.state == 'to_complete'"
                                             class="alert alert-warning border mb-3"
@@ -548,7 +570,7 @@
                                         </div>
 
                                         <form
-                                            t-if="payment_request.state in ('draft', 'to_complete')"
+                                            t-if="case.state == 'accepted' and payment_request.state in ('draft', 'to_complete')"
                                             t-att-action="'/my/evm/payment-requests/%s/update' % payment_request.id"
                                             method="post"
                                             class="row g-3"
@@ -615,7 +637,7 @@
                                             </div>
                                         </form>
                                         <form
-                                            t-if="payment_request.state in ('draft', 'to_complete')"
+                                            t-if="case.state == 'accepted' and payment_request.state in ('draft', 'to_complete')"
                                             t-att-action="'/my/evm/payment-requests/%s/attachments/upload' % payment_request.id"
                                             method="post"
                                             enctype="multipart/form-data"
@@ -644,7 +666,7 @@
                                             </div>
                                         </form>
                                         <form
-                                            t-if="payment_request.state in ('draft', 'to_complete')"
+                                            t-if="case.state == 'accepted' and payment_request.state in ('draft', 'to_complete')"
                                             t-att-action="'/my/evm/payment-requests/%s/submit' % payment_request.id"
                                             method="post"
                                             class="d-flex justify-content-end mt-3"
@@ -687,6 +709,7 @@
                                             <p class="mb-0" t-esc="payment_request_comment_errors.get(payment_request.id)"/>
                                         </div>
                                         <form
+                                            t-if="case.state == 'accepted'"
                                             t-att-action="'/my/evm/payment-requests/%s/comments/post' % payment_request.id"
                                             method="post"
                                             class="mt-3"

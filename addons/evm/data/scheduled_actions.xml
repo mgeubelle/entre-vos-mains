@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="evm_ir_cron_auto_close_cases" model="ir.cron">
+            <field name="name">EVM - cloturer automatiquement les dossiers eligibles</field>
+            <field name="model_id" ref="model_evm_case"/>
+            <field name="model_name">evm.case</field>
+            <field name="state">code</field>
+            <field name="code">model._cron_auto_close_cases()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active">True</field>
+            <field name="user_id" ref="base.user_root"/>
+        </record>
+    </data>
+</odoo>

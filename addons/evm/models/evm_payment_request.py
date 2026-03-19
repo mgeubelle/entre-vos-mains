@@ -137,6 +137,8 @@ class EvmPaymentRequest(models.Model):
 
     def _check_comment_post_access(self):
         self.ensure_one()
+        if self.case_id.state == "closed":
+            raise AccessError(_("Le dossier est cloture et ses demandes restent consultables en lecture."))
         user = self.env.user
         if user.has_group("evm.group_evm_admin") or user.has_group("evm.group_evm_fondation"):
             return
@@ -892,6 +894,8 @@ class EvmPaymentRequest(models.Model):
                 raise AccessError(_("Le motif de refus ne peut etre prepare que sur une demande soumise."))
             vals["refusal_reason"] = self._sanitize_refusal_reason(vals["refusal_reason"])
         if self._is_portal_patient_context():
+            if any(record.case_id.state != "accepted" for record in self):
+                raise AccessError(_("Le dossier est cloture et ses demandes restent consultables en lecture."))
             if set(vals) - self._patient_editable_fields and not allow_workflow_write:
                 raise AccessError(_("Le patient ne peut modifier que les informations de saisie de sa demande."))
             if any(state not in self._portal_resumable_states for state in current_states.values()):
@@ -901,6 +905,8 @@ class EvmPaymentRequest(models.Model):
     def unlink(self):
         if self._is_internal_manual_management_context():
             raise AccessError(_("La suppression manuelle d'une demande de paiement n'est pas autorisee."))
+        if self._is_portal_patient_context() and any(record.case_id.state != "accepted" for record in self):
+            raise AccessError(_("Le dossier est cloture et ses demandes restent consultables en lecture."))
         if self._is_portal_patient_context() and any(record.state != "draft" for record in self):
             raise AccessError(_("Seule une demande en brouillon peut etre supprimee depuis le portail patient."))
         return super().unlink()
