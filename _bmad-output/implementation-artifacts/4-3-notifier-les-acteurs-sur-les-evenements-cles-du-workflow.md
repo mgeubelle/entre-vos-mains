@@ -62,6 +62,7 @@ GPT-5 Codex
 - Branchement des notifications sur les evenements V1: dossier accepte/refuse, demande soumise, demande a completer, demande validee et demande payee.
 - Verification de la coherence portail/ACL via tests metier et portail, avec emission sous `sudo()` pour eviter les regressions de droits sur les effets de bord mail.
 - Correctifs de revue appliques: routage des notifications selon le canal configure pour le destinataire et suppression du fallback dangereux vers `patient_email` sans partenaire resolu.
+- Correctif complementaire sur les templates email: `email_from` est maintenant force depuis l'acteur metier declencheur afin d'eviter le fallback Odoo vers l'utilisateur `sudo()`, avec assertions de regression sur les notifications accepte/refuse/a completer/validee/payee.
 - Verification executee: `python3 -m compileall addons/evm/models/evm_case.py addons/evm/models/evm_payment_request.py addons/evm/models/evm_notification_mixin.py addons/evm/tests/test_case_review.py addons/evm/tests/test_payment_request.py`, `uvx --from 'ruff==0.11.0' ruff check addons/evm/models addons/evm/tests addons/evm/__manifest__.py`, `make reload-evm`, plus une suite Odoo ciblee sur les notifications et le scenario portail de resoumission.
 
 ## File List
@@ -79,3 +80,4 @@ GPT-5 Codex
 
 - 2026-03-18: Added V1 workflow notifications for cases and payment requests, plus regression coverage for portal and mail side effects.
 - 2026-03-18: Applied review fixes for recipient channel routing and unauthorized refusal-notification prevention, then marked story done.
+- 2026-03-21: Fixed notification template sender rendering to preserve the business actor under `sudo()` and extended regression checks to every V1 email event.

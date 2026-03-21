@@ -6,6 +6,18 @@ class EvmNotificationMixin(models.AbstractModel):
     _name = "evm.notification.mixin"
     _description = "EVM Notification Mixin"
 
+    def _evm_get_notification_email_from(self):
+        self.ensure_one()
+        sender_partner = self.env.user.sudo().partner_id
+        company_partner = self.env.company.sudo().partner_id
+        return (
+            sender_partner.email_formatted
+            or company_partner.email_formatted
+            or sender_partner.email
+            or company_partner.email
+            or ""
+        )
+
     def _evm_get_selection_label(self, field_name, value):
         self.ensure_one()
         return dict(self._fields[field_name].selection).get(value, value or "")
@@ -96,6 +108,7 @@ class EvmNotificationMixin(models.AbstractModel):
         template = self.env.ref(template_xmlid).sudo()
         mail_id = template.with_context(
             evm_notification_subject=subject,
+            evm_notification_email_from=self._evm_get_notification_email_from(),
             evm_notification_intro=intro,
             evm_notification_object_name=object_name,
             evm_notification_status_label=status_label or "",

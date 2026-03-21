@@ -457,12 +457,14 @@ class TestEvmCaseReview(TransactionCase):
 
         self.assertEqual(len(notification_mails), 1)
         self.assertEqual(notification_mails.email_to, case.patient_partner_id.email)
+        self.assertEqual(notification_mails.email_from, self.fondation_user.partner_id.email_formatted)
         self.assertIn(case.name, notification_mails.body_html)
         self.assertIn("Accepte", notification_mails.body_html)
         self.assertIn(f"/my/evm/cases/{case.id}", notification_mails.body_html)
 
     def test_refuse_action_sends_patient_notification_without_unrelated_recipient(self):
         case = self._create_pending_case(requested=12, suffix="NotifyRefuse")
+        self.fondation_user.partner_id.write({"email": "fondation.review.refuse@example.com"})
         other_patient = new_test_user(
             self.env,
             login="other.case.review.notification@example.com",
@@ -480,6 +482,7 @@ class TestEvmCaseReview(TransactionCase):
         self.assertEqual(len(notification_mails), 1)
         self.assertTrue(case.patient_partner_id)
         self.assertEqual(notification_mails.email_to, case.patient_partner_id.email)
+        self.assertEqual(notification_mails.email_from, self.fondation_user.partner_id.email_formatted)
         self.assertIn(case.name, notification_mails.body_html)
         self.assertIn("Refuse", notification_mails.body_html)
         self.assertFalse(

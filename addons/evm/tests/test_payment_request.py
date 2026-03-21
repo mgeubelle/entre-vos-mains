@@ -719,6 +719,7 @@ class TestEvmPaymentRequest(TransactionCase):
 
         self.assertEqual(len(notification_mails), 1)
         self.assertEqual(notification_mails.email_to, self.patient_user.partner_id.email)
+        self.assertEqual(notification_mails.email_from, foundation_user.partner_id.email_formatted)
         self.assertIn(payment_request.name, notification_mails.body_html)
         self.assertIn("A completer", notification_mails.body_html)
         self.assertIn(f"/my/evm/cases/{payment_request.case_id.id}", notification_mails.body_html)
@@ -1130,6 +1131,7 @@ class TestEvmPaymentRequest(TransactionCase):
 
         self.assertEqual(len(notification_mails), 1)
         self.assertEqual(notification_mails.email_to, self.patient_user.partner_id.email)
+        self.assertEqual(notification_mails.email_from, foundation_user.partner_id.email_formatted)
         self.assertIn(payment_request.name, notification_mails.body_html)
         self.assertIn("Validee", notification_mails.body_html)
         self.assertIn("paiement", notification_mails.body_html.lower())
@@ -1527,6 +1529,7 @@ class TestEvmPaymentRequest(TransactionCase):
 
         self.assertEqual(len(notification_mails), 1)
         self.assertEqual(notification_mails.email_to, self.patient_user.partner_id.email)
+        self.assertEqual(notification_mails.email_from, foundation_user.partner_id.email_formatted)
         self.assertIn(payment_request.name, notification_mails.body_html)
         self.assertIn("Payee", notification_mails.body_html)
         self.assertIn("paiement", notification_mails.body_html.lower())
