@@ -8,6 +8,8 @@ from odoo.tests.common import HttpCase, new_test_user
 
 @tagged("post_install", "-at_install")
 class TestEvmKinePortal(HttpCase):
+    _kine_cases_menu_pattern = r'<a[^>]+href="/my/evm/cases"[^>]*>[\s\S]*?Mes dossiers[\s\S]*?</a>'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -31,6 +33,7 @@ class TestEvmKinePortal(HttpCase):
             groups="evm.group_evm_patient",
             name="Patient Portail",
         )
+        cls.patient_password = cls.patient_user.login
 
         cls.own_case = cls.env["evm.case"].create(
             {
@@ -65,6 +68,10 @@ class TestEvmKinePortal(HttpCase):
 
     def test_kine_portal_pages_show_case_list_and_detail(self):
         self.authenticate(self.kine_login, self.kine_password)
+
+        website_response = self.url_open("/")
+        self.assertEqual(website_response.status_code, 200)
+        self.assertRegex(website_response.text, self._kine_cases_menu_pattern)
 
         home_response = self.url_open("/my")
         self.assertEqual(home_response.status_code, 200)
@@ -204,6 +211,20 @@ class TestEvmKinePortal(HttpCase):
                 ]
             )
         )
+
+    def test_patient_sees_direct_menu_in_website_navigation(self):
+        self.authenticate(self.patient_user.login, self.patient_password)
+
+        response = self.url_open("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(response.text, self._kine_cases_menu_pattern)
+
+    def test_public_user_does_not_see_kine_direct_menu_in_website_navigation(self):
+        response = self.url_open("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotRegex(response.text, self._kine_cases_menu_pattern)
 
     @staticmethod
     def _extract_csrf_token(html):

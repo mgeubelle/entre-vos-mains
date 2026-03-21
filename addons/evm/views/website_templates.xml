@@ -137,4 +137,22 @@
         <field name="parent_id" ref="website.main_menu"/>
         <field name="sequence" type="int">70</field>
     </record>
+
+    <record id="evm_menu_kine_cases" model="website.menu">
+        <field name="name">Mes dossiers</field>
+        <field name="url">/my/evm/cases</field>
+        <field name="parent_id" ref="website.main_menu"/>
+        <field name="sequence" type="int">65</field>
+        <field
+            name="group_ids"
+            eval="[(4, ref('evm.group_evm_kine')), (4, ref('evm.group_evm_patient')), (4, ref('website.group_website_designer'))]"
+        />
+    </record>
+
+    <function model="website.menu" name="write">
+        <function model="website.menu" name="search" eval="[[('url', '=', '/my/evm/cases')]]"/>
+        <value
+            eval="{'group_ids': [(6, 0, [ref('evm.group_evm_kine'), ref('evm.group_evm_patient'), ref('website.group_website_designer')])]}"
+        />
+    </function>
 </odoo>
