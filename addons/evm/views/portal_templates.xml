@@ -112,8 +112,8 @@
 
     <template id="evm_portal_my_case" name="Detail dossier kine">
         <t t-call="portal.portal_layout">
-            <div class="row g-3">
-                <div class="col-12 col-xl-8">
+            <div class="evm-case-detail-layout">
+                <div class="evm-case-detail-main">
                     <div class="card border-0 shadow-sm">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
@@ -158,8 +158,10 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="card border-0 shadow-sm mt-3">
+                <aside class="evm-case-detail-aside">
+                    <div class="card border-0 shadow-sm">
                         <div class="card-body">
                             <h3 class="h5 mb-3">Historique d'activite</h3>
                             <div t-if="case_comment_flash.get('message')" class="alert alert-success" role="alert">
@@ -200,7 +202,7 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </aside>
             </div>
         </t>
     </template>
@@ -794,8 +796,8 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
                                 <div>
-                                    <h3 class="h5 mb-1">Echanges sur le dossier</h3>
-                                    <p class="text-muted mb-0">Retrouvez l'historique complet du dossier sans interrompre la lecture des demandes.</p>
+                                    <h3 class="h5 mb-1">Historique d'activité</h3>
+                                    <p class="text-muted mb-0">Retrouvez l'historique complet des échanges sur le dossier.</p>
                                 </div>
                             </div>
                             <div t-if="case_comment_flash.get('message')" class="alert alert-success" role="alert">

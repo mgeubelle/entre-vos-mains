@@ -124,6 +124,7 @@
     border-color: rgba(31, 42, 42, 0.25);
 }
 
+.evm-case-detail-layout,
 .evm-patient-case-layout {
     display: grid;
     gap: 1rem;
@@ -163,16 +164,20 @@
     border-color: rgba(217, 111, 50, 0.9) !important;
 }
 
+.evm-case-detail-main,
+.evm-case-detail-aside,
 .evm-patient-case-main,
 .evm-patient-case-aside {
     min-width: 0;
 }
 
+.evm-case-detail-aside .card-body > :last-child,
 .evm-patient-case-aside .card-body > :last-child {
     margin-bottom: 0;
 }
 
 @media (min-width: 1200px) {
+    .evm-case-detail-layout,
     .evm-patient-case-layout {
         align-items: start;
         grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
