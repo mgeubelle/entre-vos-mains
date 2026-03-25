@@ -75,6 +75,53 @@ docker compose -f /home/mgeubelle/dev/odoo-scripts/local-setup-docker/docker-com
 curl -I http://127.0.0.1/web/login
 ```
 
+## Mise a jour du serveur
+
+TL;DR apres un `git push` sur `main`:
+
+```bash
+scp /home/mgeubelle/dev/odoo-scripts/odoo-setup-docker-server.sh ubuntu@91.134.242.242:/home/ubuntu/
+ssh ubuntu@91.134.242.242 'sudo env DOMAIN=labelleconfuse.be EMAIL=labelleconfuse.be@gmail.com GIT_REPO=https://github.com/mgeubelle/entre-vos-mains.git GIT_BRANCH=main ADDONS_SUBDIR=addons CUSTOM_MODULES=evm DB_NAME=odoo DB_USER=odoo bash /home/ubuntu/odoo-setup-docker-server.sh'
+ssh ubuntu@91.134.242.242 "sudo docker compose --project-name odoo --env-file /etc/odoo/odoo.env -f /opt/odoo-stack/docker-compose.yml exec -T db psql -U odoo -d odoo -Atqc \"select name, state from ir_module_module where name = 'evm';\""
+```
+
+Apres un `git push` sur `main`, mettre a jour le serveur de prod `labelleconfuse.be` ainsi :
+
+1. Copier le script serveur a jour:
+
+```bash
+scp /home/mgeubelle/dev/odoo-scripts/odoo-setup-docker-server.sh ubuntu@91.134.242.242:/home/ubuntu/
+```
+
+2. Relancer le deploiement sur le serveur:
+
+```bash
+ssh ubuntu@91.134.242.242 'sudo env \
+  DOMAIN=labelleconfuse.be \
+  EMAIL=labelleconfuse.be@gmail.com \
+  GIT_REPO=https://github.com/mgeubelle/entre-vos-mains.git \
+  GIT_BRANCH=main \
+  ADDONS_SUBDIR=addons \
+  CUSTOM_MODULES=evm \
+  DB_NAME=odoo \
+  DB_USER=odoo \
+  bash /home/ubuntu/odoo-setup-docker-server.sh'
+```
+
+3. Verifier que le module est bien redeploye:
+
+```bash
+ssh ubuntu@91.134.242.242 "sudo docker compose --project-name odoo --env-file /etc/odoo/odoo.env -f /opt/odoo-stack/docker-compose.yml exec -T db psql -U odoo -d odoo -Atqc \"select name, state from ir_module_module where name = 'evm';\""
+curl -I http://labelleconfuse.be
+curl -Ik https://labelleconfuse.be/web/login
+```
+
+Resultat attendu:
+
+- la requete SQL retourne `evm|installed`
+- `http://labelleconfuse.be` redirige en HTTPS
+- `https://labelleconfuse.be/web/login` repond en `200 OK`
+
 ## Comptes de demo locaux
 
 Le stack local partage charge les demo data Odoo pour `evm` car `without_demo = False` dans la configuration locale.
