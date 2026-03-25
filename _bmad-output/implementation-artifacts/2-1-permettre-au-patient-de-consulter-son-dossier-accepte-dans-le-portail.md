@@ -65,7 +65,8 @@ GPT-5 Codex
 
 - Le detail portail patient affiche maintenant le statut du dossier, la date d'introduction, les compteurs de seances demandes/autorisees/consommees/restantes et une action explicite vers la creation de demande de paiement.
 - `evm.case` expose des compteurs calcules `sessions_consumed` et `remaining_session_count`, alimentes uniquement par les demandes `validated` et `paid`.
-- Le controle de route patient est renforce avec une verification defensive du couple `patient_user_id` / `state=accepted` avant rendu du detail.
+- Le controle de route patient est renforce avec une verification defensive du couple `patient_user_id` / statut portail autorise avant rendu du detail.
+- Evolution portail du 2026-03-25: la liste patient conserve les dossiers `pending`, `accepted` et `closed` lies au compte portail, avec navigation par onglets `En attente`, `En cours`, `Archives / clotures`; seuls les dossiers `accepted` restent actionnables.
 - La couverture de tests est etendue sur le modele de dossier et le portail patient pour les compteurs, les libelles visibles et les redirections sur acces non autorise.
 
 ## File List
@@ -82,6 +83,7 @@ GPT-5 Codex
 
 - 2026-03-10: implementation de la story 2.1 avec solde de seances calcule, detail portail patient enrichi et durcissement des controles d'acces.
 - 2026-03-10: correctifs de review sur le suivi de solde, la pagination des demandes patient et la clarification des controles d'acces.
+- 2026-03-25: extension de la visibilite portail patient aux dossiers `pending` et `closed` deja lies au compte, avec onglets de navigation et maintien des actions sur les seuls dossiers `accepted`.
 
 ## Senior Developer Review (AI)
 

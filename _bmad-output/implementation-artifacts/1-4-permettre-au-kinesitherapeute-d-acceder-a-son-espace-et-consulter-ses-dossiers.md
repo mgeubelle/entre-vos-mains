@@ -55,6 +55,7 @@ GPT-5 Codex
 - Story prete pour execution par `dev-story`
 - Modele `evm.case` enrichi avec statut, compteurs de seances, libelle patient calcule et historique `mail.thread`.
 - Portail kine ajoute avec entree `Mes dossiers`, liste `/my/evm/cases` et detail `/my/evm/cases/<id>`.
+- Evolution portail du 2026-03-25: la liste kine conserve desormais tous les dossiers du praticien (`pending`, `draft`, `accepted`, `refused`, `closed`) et les regroupe par onglets `En attente`, `En cours`, `Archives / clotures`.
 - Les record rules existantes ont ete preservees et verrouillees par tests sur le domaine `kine_user_id = user.id` et sur le redirect portail en acces transverse.
 - Validation finale: `make quality` OK.
 
@@ -77,6 +78,7 @@ GPT-5 Codex
 - 2026-03-08: story passee en `in-progress` et socle de consultation `evm.case` implemente.
 - 2026-03-08: portail kine, vues internes et verifications de cloisonnement completes; story promue en `review`.
 - 2026-03-09: code review adverse terminee; story approuvee et promue en `done`.
+- 2026-03-25: comportement portail ajuste pour conserver la visibilite de tous les dossiers kine via des onglets par statut, au lieu de masquer les dossiers traites.
 
 ## Senior Developer Review (AI)
 

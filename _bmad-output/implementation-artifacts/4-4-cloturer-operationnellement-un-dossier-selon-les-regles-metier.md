@@ -67,7 +67,7 @@ GPT-5 Codex
 
 - Conditions d'eligibilite a la cloture implementees sur `evm.case` avec seuil de seances, delai projet configurable et blocage des demandes de paiement actives.
 - Action metier `action_close()` ajoutee au back-office avec historique chatter et logique mutualisable pour la cloture automatique.
-- Vues actives nettoyees des dossiers clos: filtres back-office, liste kine portail et actions patient masquees sur dossier clos.
+- Vues actives nettoyees des dossiers clos cote back-office, tandis que le portail conserve la consultation via l'onglet `Archives / clotures`; les actions patient restent masquees sur dossier clos.
 - Tests ajoutes et verifies pour cloture eligible/non eligible, lecture seule portail, securite patient sur dossiers clos et vues back-office.
 - Validations executees: `make reload-evm`, suite Odoo ciblee 9 tests, suite Odoo elargie 124 tests, `make quality-lint`, `make quality-smoke`.
 - Correctifs de revue appliques: delai projet configurable via `evm.case_closure_delay_days` (90 jours par defaut, `0` pour desactiver), cron `evm_ir_cron_auto_close_cases` ajoute et route `/my/evm/cases/<id>/payment-requests/new` redirigee vers le detail pour un dossier clos.
