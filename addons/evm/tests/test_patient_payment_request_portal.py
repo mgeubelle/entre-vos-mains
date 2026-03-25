@@ -180,12 +180,19 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn("Mes dossiers", home_response.text)
         self.assertEqual(list_response.status_code, 200)
         self.assertIn(self.accepted_case.name, list_response.text)
+        self.assertIn("En cours", list_response.text)
+        self.assertIn("?tab=pending", list_response.text)
+        self.assertIn("?tab=active", list_response.text)
+        self.assertIn("?tab=archived", list_response.text)
         self.assertNotIn(self.other_case.name, list_response.text)
         self.assertEqual(detail_response.status_code, 200)
         self.assertIn("Demandes de paiement", detail_response.text)
         self.assertIn("Nouvelle demande de paiement", detail_response.text)
         self.assertIn("Seances consommees", detail_response.text)
         self.assertIn("Seances restantes", detail_response.text)
+        self.assertIn("evm-patient-case-layout", detail_response.text)
+        self.assertIn("evm-patient-case-main", detail_response.text)
+        self.assertIn("evm-patient-case-aside", detail_response.text)
         self.assertIn("Echanges sur le dossier", detail_response.text)
         self.assertIn("Commentaire dossier visible patient.", detail_response.text)
         self.assertNotIn("Note interne dossier invisible patient.", detail_response.text)
@@ -201,7 +208,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             detail_response.text,
         )
 
-    def test_patient_portal_closed_case_stays_consultable_but_leaves_active_list_and_hides_actions(self):
+    def test_patient_portal_closed_case_stays_consultable_visible_in_archived_section_and_hides_actions(self):
         closed_case = self.env["evm.case"].create(
             {
                 "name": "Dossier patient cloture portail",
@@ -223,11 +230,12 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         )
         self.authenticate(self.patient_login, self.patient_password)
 
-        list_response = self.url_open("/my/evm/cases")
+        list_response = self.url_open("/my/evm/cases?tab=archived")
         detail_response = self.url_open(f"/my/evm/cases/{closed_case.id}")
 
         self.assertEqual(list_response.status_code, 200)
-        self.assertNotIn(closed_case.name, list_response.text)
+        self.assertIn("Archives / clotures", list_response.text)
+        self.assertIn(closed_case.name, list_response.text)
         self.assertEqual(detail_response.status_code, 200)
         self.assertIn(closed_case.name, detail_response.text)
         self.assertIn("Cloture", detail_response.text)
@@ -235,6 +243,22 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertNotIn(f'/my/evm/cases/{closed_case.id}/payment-requests/new', detail_response.text)
         self.assertNotIn(f'/my/evm/cases/{closed_case.id}/comments/post', detail_response.text)
         self.assertNotIn(f'/my/evm/payment-requests/{closed_request.id}/comments/post', detail_response.text)
+
+    def test_patient_portal_pending_case_is_listed_and_consultable_in_read_only(self):
+        self.authenticate(self.patient_login, self.patient_password)
+
+        list_response = self.url_open("/my/evm/cases?tab=pending")
+        detail_response = self.url_open(f"/my/evm/cases/{self.pending_case.id}")
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertIn(self.pending_case.name, list_response.text)
+        self.assertIn("En attente", list_response.text)
+        self.assertNotIn(self.accepted_case.name, list_response.text)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertIn(self.pending_case.name, detail_response.text)
+        self.assertIn("Dossier en attente", html.unescape(detail_response.text))
+        self.assertNotIn(f'/my/evm/cases/{self.pending_case.id}/payment-requests/new', detail_response.text)
+        self.assertNotIn(f'/my/evm/cases/{self.pending_case.id}/comments/post', detail_response.text)
 
     def test_patient_portal_closed_case_redirects_payment_request_creation_form_to_case_detail(self):
         closed_case = self.env["evm.case"].create(
@@ -1168,16 +1192,13 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn("Ajoutez au moins un justificatif avant de soumettre la demande.", response_text)
         self.assertEqual(self.accepted_case_draft_request.state, "draft")
 
-    def test_patient_portal_case_detail_rejects_unrelated_or_non_accepted_cases(self):
+    def test_patient_portal_case_detail_rejects_unrelated_cases_only(self):
         self.authenticate(self.patient_login, self.patient_password)
 
         other_case_response = self.url_open(f"/my/evm/cases/{self.other_case.id}", allow_redirects=False)
-        pending_case_response = self.url_open(f"/my/evm/cases/{self.pending_case.id}", allow_redirects=False)
 
         self.assertEqual(other_case_response.status_code, 303)
         self.assertTrue(other_case_response.headers["Location"].endswith("/my/evm/cases"))
-        self.assertEqual(pending_case_response.status_code, 303)
-        self.assertTrue(pending_case_response.headers["Location"].endswith("/my/evm/cases"))
 
     def test_patient_portal_case_detail_paginates_payment_requests(self):
         self.authenticate(self.patient_login, self.patient_password)

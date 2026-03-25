@@ -13,6 +13,9 @@ sont introduits progressivement au fil des stories.
     "license": "LGPL-3",
     "depends": ["base", "mail", "portal", "website", "account"],
     "assets": {
+        "web.assets_frontend": [
+            "evm/static/src/scss/website.scss",
+        ],
         "website.assets_frontend": [
             "evm/static/src/scss/website.scss",
         ],

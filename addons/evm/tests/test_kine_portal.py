@@ -81,7 +81,10 @@ class TestEvmKinePortal(HttpCase):
         self.assertEqual(list_response.status_code, 200)
         self.assertIn("Nouveau dossier", list_response.text)
         self.assertIn(self.own_case.name, list_response.text)
-        self.assertIn("En attente", list_response.text)
+        self.assertIn("?tab=pending", list_response.text)
+        self.assertIn("?tab=active", list_response.text)
+        self.assertIn("?tab=archived", list_response.text)
+        self.assertIn("En cours", list_response.text)
         self.assertIn("Patient Portail", list_response.text)
         self.assertNotIn(self.other_case.name, list_response.text)
 
@@ -102,14 +105,15 @@ class TestEvmKinePortal(HttpCase):
         self.assertEqual(response.status_code, 303)
         self.assertTrue(response.headers["Location"].endswith("/my/evm/cases"))
 
-    def test_kine_closed_case_is_hidden_from_active_list_but_detail_stays_read_only(self):
+    def test_kine_closed_case_is_visible_in_archived_section_and_detail_stays_read_only(self):
         self.authenticate(self.kine_login, self.kine_password)
 
-        list_response = self.url_open("/my/evm/cases")
+        list_response = self.url_open("/my/evm/cases?tab=archived")
         detail_response = self.url_open(f"/my/evm/cases/{self.closed_case.id}")
 
         self.assertEqual(list_response.status_code, 200)
-        self.assertNotIn(self.closed_case.name, list_response.text)
+        self.assertIn("Archives / clotures", list_response.text)
+        self.assertIn(self.closed_case.name, list_response.text)
         self.assertEqual(detail_response.status_code, 200)
         self.assertIn(self.closed_case.name, detail_response.text)
         self.assertIn("Cloture", detail_response.text)

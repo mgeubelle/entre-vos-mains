@@ -16,10 +16,10 @@ class EvmCustomerPortal(CustomerPortal):
             return default
 
     def _get_kine_case_domain(self):
-        return [("kine_user_id", "=", request.env.user.id), ("state", "!=", "closed")]
+        return [("kine_user_id", "=", request.env.user.id)]
 
     def _get_patient_case_domain(self):
-        return [("patient_user_id", "=", request.env.user.id), ("state", "=", "accepted")]
+        return [("patient_user_id", "=", request.env.user.id), ("state", "in", ("pending", "accepted", "closed"))]
 
     def _is_kine_user(self):
         return request.env.user.has_group("evm.group_evm_kine")
@@ -33,6 +33,61 @@ class EvmCustomerPortal(CustomerPortal):
         if self._is_patient_user():
             return self._get_patient_case_domain()
         return []
+
+    def _get_case_tabs(self):
+        if self._is_patient_user():
+            return [
+                {"key": "pending", "title": _("En attente"), "states": ("pending",)},
+                {"key": "active", "title": _("En cours"), "states": ("accepted",)},
+                {
+                    "key": "archived",
+                    "title": _("Archives / clotures"),
+                    "states": ("closed",),
+                },
+            ]
+        return [
+            {"key": "pending", "title": _("En attente"), "states": ("pending",)},
+            {
+                "key": "active",
+                "title": _("En cours"),
+                "states": ("draft", "accepted"),
+            },
+            {
+                "key": "archived",
+                "title": _("Archives / clotures"),
+                "states": ("refused", "closed"),
+            },
+        ]
+
+    def _build_case_tab_domain(self, base_domain, tab_states):
+        return [*base_domain, ("state", "in", list(tab_states))]
+
+    def _get_case_tab_values(self, base_domain, active_tab_key):
+        case_model = request.env["evm.case"]
+        tabs = self._get_case_tabs()
+        tab_values = []
+        for tab in tabs:
+            tab_domain = self._build_case_tab_domain(base_domain, tab["states"])
+            tab_count = case_model.search_count(tab_domain)
+            tab_values.append(
+                {
+                    "key": tab["key"],
+                    "title": tab["title"],
+                    "count": tab_count,
+                    "domain": tab_domain,
+                    "is_active": tab["key"] == active_tab_key,
+                    "url": f"/my/evm/cases?tab={tab['key']}",
+                }
+            )
+        available_keys = {tab["key"] for tab in tab_values}
+        if active_tab_key not in available_keys:
+            if any(tab["key"] == "active" and tab["count"] for tab in tab_values):
+                active_tab_key = "active"
+            else:
+                active_tab_key = next((tab["key"] for tab in tab_values if tab["count"]), tab_values[0]["key"])
+        for tab in tab_values:
+            tab["is_active"] = tab["key"] == active_tab_key
+        return tab_values, active_tab_key
 
     def _set_created_payment_request_flash(self, case_id, request_id):
         request.session["evm_payment_request_created_flash"] = {"case_id": case_id, "request_id": request_id}
@@ -338,7 +393,7 @@ class EvmCustomerPortal(CustomerPortal):
             case_sudo = self._document_check_access("evm.case", case_id)
         except (AccessError, MissingError):
             return None
-        if case_sudo.patient_user_id != request.env.user or case_sudo.state not in ("accepted", "closed"):
+        if case_sudo.patient_user_id != request.env.user or case_sudo.state not in ("pending", "accepted", "closed"):
             return None
         return case_sudo
 
@@ -517,20 +572,29 @@ class EvmCustomerPortal(CustomerPortal):
         if not domain or not case_model.has_access("read"):
             return request.redirect("/my")
 
-        case_count = case_model.search_count(domain)
+        tab_values, active_tab_key = self._get_case_tab_values(domain, kwargs.get("tab"))
+        active_tab = next(tab for tab in tab_values if tab["key"] == active_tab_key)
+        case_count = active_tab["count"]
         pager = portal_pager(
             url="/my/evm/cases",
             total=case_count,
             page=page,
             step=self._items_per_page,
-            url_args=kwargs,
+            url_args={"tab": active_tab_key},
         )
-        cases = case_model.search(domain, order="create_date desc, id desc", limit=self._items_per_page, offset=pager["offset"])
+        cases = case_model.search(
+            active_tab["domain"],
+            order="create_date desc, id desc",
+            limit=self._items_per_page,
+            offset=pager["offset"],
+        )
 
         values = self._prepare_portal_layout_values()
         values.update(
             {
                 "cases": cases,
+                "case_tabs": tab_values,
+                "active_case_tab": active_tab_key,
                 "page_name": "evm_patient_cases" if self._is_patient_user() else "evm_cases",
                 "pager": pager,
                 "default_url": "/my/evm/cases",
