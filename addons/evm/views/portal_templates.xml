@@ -624,7 +624,6 @@
                                                     t-attf-class="form-control #{'is-invalid' if request_update_errors.get('amount_total') else ''}"
                                                     t-att-value="request_form_values.get('amount_total', '')"
                                                 />
-                                                <div class="form-text">Champ facultatif en V1.</div>
                                                 <div t-if="request_update_errors.get('amount_total')" class="invalid-feedback d-block">
                                                     <t t-esc="request_update_errors.get('amount_total')"/>
                                                 </div>
@@ -1003,7 +1002,6 @@
                                         t-attf-class="form-control #{'is-invalid' if errors.get('amount_total') else ''}"
                                         t-att-value="form_values.get('amount_total', '')"
                                     />
-                                    <div class="form-text">Champ facultatif en V1.</div>
                                     <div t-if="errors.get('amount_total')" class="invalid-feedback d-block">
                                         <t t-esc="errors.get('amount_total')"/>
                                     </div>
