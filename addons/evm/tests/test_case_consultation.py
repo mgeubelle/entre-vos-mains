@@ -1,3 +1,5 @@
+import re
+
 from odoo.exceptions import ValidationError
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase, new_test_user
@@ -152,11 +154,13 @@ class TestEvmCaseConsultation(TransactionCase):
                 "requested_session_count": 14,
             }
         )
+        generated_name = case.name
 
         case.action_submit_to_pending()
 
         self.assertEqual(case.state, "pending")
-        self.assertEqual(case.name, "Patient Creation")
+        self.assertEqual(case.name, generated_name)
+        self.assertRegex(case.name, r"^Dossier \d{6}$")
         self.assertEqual(case.patient_display_name, "Patient Creation")
         self.assertEqual(case.requested_session_count, 14)
         bodies = case.message_ids.mapped("body")
@@ -164,6 +168,15 @@ class TestEvmCaseConsultation(TransactionCase):
             any("Systeme:" in (body or "") and "Demande initiale soumise" in body for body in bodies),
             "La soumission doit laisser une trace exploitable dans l'historique.",
         )
+
+    def test_case_creation_without_name_generates_incremented_case_number(self):
+        first_case = self.env["evm.case"].create({"kine_user_id": self.kine_user.id})
+        second_case = self.env["evm.case"].create({"kine_user_id": self.kine_user.id})
+
+        self.assertRegex(first_case.name, r"^Dossier \d{6}$")
+        self.assertRegex(second_case.name, r"^Dossier \d{6}$")
+        self.assertNotEqual(first_case.name, second_case.name)
+        self.assertLess(int(re.search(r"(\d+)$", first_case.name).group(1)), int(re.search(r"(\d+)$", second_case.name).group(1)))
 
     def test_case_submission_links_existing_patient_portal_user_by_email(self):
         existing_patient_user = new_test_user(

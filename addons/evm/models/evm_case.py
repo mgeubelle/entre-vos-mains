@@ -13,6 +13,7 @@ class EvmCase(models.Model):
     _inherit = ["mail.thread", "evm.notification.mixin"]
     _description = "EVM Case"
     _order = "create_date desc, id desc"
+    _name_sequence_code = "evm.case"
     _session_balance_counted_states = ("validated", "paid", "closed")
     _default_closure_delay_days = 90
     _closure_blocking_payment_request_states = ("draft", "submitted", "to_complete")
@@ -641,6 +642,13 @@ class EvmCase(models.Model):
 
         return cleaned_values, errors
 
+    @api.model
+    def _next_case_name(self):
+        sequence_name = self.env["ir.sequence"].sudo().next_by_code(self._name_sequence_code)
+        if sequence_name:
+            return sequence_name
+        raise ValidationError(_("La sequence de numerotation des dossiers n'est pas configuree."))
+
     @api.model_create_multi
     def create(self, vals_list):
         if self.env.user.has_group("evm.group_evm_kine"):
@@ -654,7 +662,7 @@ class EvmCase(models.Model):
         for vals in vals_list:
             vals["patient_name"] = (vals.get("patient_name") or "").strip() or False
             vals["patient_email"] = (vals.get("patient_email") or "").strip() or False
-            vals["name"] = (vals.get("name") or vals.get("patient_name") or _("Nouveau dossier")).strip()
+            vals["name"] = (vals.get("name") or "").strip() or self._next_case_name()
         records = super().create(vals_list)
         for record in records:
             record._post_system_message(_("Dossier cree."))
@@ -693,7 +701,6 @@ class EvmCase(models.Model):
 
             record.with_context(evm_allow_case_workflow_write=True).write(
                 {
-                    "name": cleaned_values["patient_name"],
                     "patient_name": cleaned_values["patient_name"],
                     "patient_email": cleaned_values["patient_email"],
                     "requested_session_count": cleaned_values["requested_session_count"],

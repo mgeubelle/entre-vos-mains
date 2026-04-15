@@ -27,6 +27,7 @@ sont introduits progressivement au fil des stories.
         "security/groups.xml",
         "security/ir.model.access.csv",
         "security/rules.xml",
+        "data/ir_sequence_data.xml",
         "data/mail_templates.xml",
         "data/scheduled_actions.xml",
         "views/evm_case_views.xml",

@@ -185,7 +185,8 @@ class TestEvmKinePortal(HttpCase):
         )
         self.assertEqual(len(case), 1)
         self.assertEqual(case.state, "pending")
-        self.assertEqual(case.name, "Patient Nouveau")
+        self.assertRegex(case.name, r"^Dossier \d{6}$")
+        self.assertNotEqual(case.name, "Patient Nouveau")
         self.assertTrue(any("Demande initiale soumise" in body for body in case.message_ids.mapped("body")))
         case.unlink()
 
