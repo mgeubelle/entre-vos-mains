@@ -544,6 +544,20 @@ class EvmCase(models.Model):
             return self.env["res.users"]
         return self.env["res.users"].with_context(active_test=False).sudo().search([("login", "=", normalized_email)], limit=1)
 
+    def _get_existing_patient_portal_binding_values(self):
+        self.ensure_one()
+        existing_user = self._find_existing_patient_user()
+        if not existing_user:
+            return {}
+        try:
+            self._ensure_reusable_patient_user(existing_user)
+        except ValidationError:
+            return {}
+        return {
+            "patient_user_id": existing_user.id,
+            "patient_partner_id": existing_user.partner_id.id,
+        }
+
     def _ensure_patient_partner(self):
         self.ensure_one()
         partner_values = self._get_patient_identity_values()
@@ -684,6 +698,7 @@ class EvmCase(models.Model):
                     "patient_email": cleaned_values["patient_email"],
                     "requested_session_count": cleaned_values["requested_session_count"],
                     "state": "pending",
+                    **record._get_existing_patient_portal_binding_values(),
                 }
             )
             record._post_system_message(_("Demande initiale soumise par le kinesitherapeute."))

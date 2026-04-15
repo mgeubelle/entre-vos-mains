@@ -25,7 +25,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             groups="evm.group_evm_kine",
             name="Kine Paiement",
         )
-        cls.patient_login = "patient_payment_portal"
+        cls.patient_login = "patient.payment.portal@example.com"
         cls.patient_password = cls.patient_login
         cls.patient_user = new_test_user(
             cls.env,
@@ -35,7 +35,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         )
         cls.other_patient_user = new_test_user(
             cls.env,
-            login="patient_payment_portal_other",
+            login="patient.payment.portal.other@example.com",
             groups="evm.group_evm_patient",
             name="Autre Patient",
         )
@@ -63,14 +63,13 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         )
         cls.pending_case = cls.env["evm.case"].create(
             {
-                "name": "Dossier patient en attente",
                 "kine_user_id": cls.kine_user.id,
-                "patient_user_id": cls.patient_user.id,
-                "state": "pending",
+                "patient_name": "Patient Paiement En Attente",
+                "patient_email": cls.patient_login,
                 "requested_session_count": 8,
-                "authorized_session_count": 0,
             }
         )
+        cls.pending_case.action_submit_to_pending()
         cls.accepted_case_payment_requests = cls.env["evm.payment_request"].with_context(
             evm_allow_payment_request_workflow_write=True
         ).create(

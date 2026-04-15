@@ -165,6 +165,28 @@ class TestEvmCaseConsultation(TransactionCase):
             "La soumission doit laisser une trace exploitable dans l'historique.",
         )
 
+    def test_case_submission_links_existing_patient_portal_user_by_email(self):
+        existing_patient_user = new_test_user(
+            self.env,
+            login="patient.pending@example.com",
+            groups="evm.group_evm_patient",
+            name="Patient Pending",
+        )
+        case = self.env["evm.case"].create(
+            {
+                "kine_user_id": self.kine_user.id,
+                "patient_name": "Patient Pending",
+                "patient_email": "patient.pending@example.com",
+                "requested_session_count": 6,
+            }
+        )
+
+        case.action_submit_to_pending()
+
+        self.assertEqual(case.state, "pending")
+        self.assertEqual(case.patient_user_id, existing_patient_user)
+        self.assertEqual(case.patient_partner_id, existing_patient_user.partner_id)
+
     def test_case_submission_rejects_missing_or_invalid_required_values(self):
         missing_values_case = self.env["evm.case"].create(
             {
