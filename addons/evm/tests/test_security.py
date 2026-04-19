@@ -1,3 +1,4 @@
+from odoo import Command
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase, new_test_user
@@ -23,6 +24,45 @@ class TestEvmSecurity(TransactionCase):
         self.assertNotIn(self.group_user, self.group_patient.implied_ids)
         self.assertIn(self.group_user, self.group_fondation.implied_ids)
         self.assertIn(self.group_system, self.group_admin.implied_ids)
+
+    def test_users_action_defaults_new_users_to_portal(self):
+        user = self.env["res.users"].with_context(no_reset_password=True).create(
+            {
+                "name": "Johnny",
+                "login": "johnny.kine@example.com",
+                "email": "johnny.kine@example.com",
+            }
+        )
+
+        self.assertTrue(user.has_group("base.group_user"))
+
+        user = self.env["res.users"].with_context(no_reset_password=True, evm_default_portal_user=True).create(
+            {
+                "name": "Johnny Portal",
+                "login": "johnny.kine.portal@example.com",
+                "email": "johnny.kine.portal@example.com",
+            }
+        )
+
+        self.assertTrue(user.has_group("base.group_portal"))
+        self.assertFalse(user.has_group("base.group_user"))
+
+    def test_portal_default_allows_kine_role_without_internal_role(self):
+        user = self.env["res.users"].with_context(no_reset_password=True, evm_default_portal_user=True).create(
+            {
+                "name": "Johnny Kine",
+                "login": "johnny.kine.role@example.com",
+                "email": "johnny.kine.role@example.com",
+                "group_ids": [
+                    Command.link(self.group_portal.id),
+                    Command.link(self.group_kine.id),
+                ],
+            }
+        )
+
+        self.assertTrue(user.has_group("evm.group_evm_kine"))
+        self.assertTrue(user.has_group("base.group_portal"))
+        self.assertFalse(user.has_group("base.group_user"))
 
     def test_acl_matrix_is_defined_for_each_role(self):
         access_model = self.env["ir.model.access"]

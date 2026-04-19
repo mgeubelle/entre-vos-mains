@@ -17,3 +17,8 @@ class ResUsers(models.Model):
         for user in self:
             if user.evm_default_service_provider_id and not user.evm_default_service_provider_id.evm_is_service_provider:
                 raise ValidationError(_("Le prestataire par defaut du kinesitherapeute doit etre marque comme prestataire EVM."))
+
+    def _default_groups(self):
+        if self.env.context.get("evm_default_portal_user"):
+            return self.env.ref("base.group_portal")
+        return super()._default_groups()

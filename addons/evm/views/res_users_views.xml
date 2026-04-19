@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <record id="base.action_res_users" model="ir.actions.act_window">
+        <field name="context">
+            {'search_default_filter_no_share': 1, 'is_action_res_users': True, 'evm_default_portal_user': True}
+        </field>
+    </record>
+
     <record id="evm_res_users_view_form" model="ir.ui.view">
         <field name="name">res.users.form.evm.service.provider</field>
         <field name="model">res.users</field>

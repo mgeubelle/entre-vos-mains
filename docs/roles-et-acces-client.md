@@ -41,6 +41,14 @@ Le principe est simple :
 - les roles `Fondation` et `Admin` sont des roles internes
 - un utilisateur portail ne peut jamais acceder aux dossiers ou demandes d'une autre personne
 
+## Creation des utilisateurs
+
+Depuis le menu standard `Settings > Users`, la creation d'un nouvel utilisateur EVM demarre par defaut en type `Portal`.
+
+- ce comportement evite le conflit entre `Role / Portal` et `Role / User` lors de l'attribution d'un role `Kine` ou `Patient`
+- si l'utilisateur doit etre interne, il faut lui attribuer un role `Fondation` ou `Admin`
+- les roles `Kine` et `Patient` doivent rester des comptes portail
+
 ## Matrice d'acces
 
 | Role | Type d'acces | Dossiers | Demandes de paiement | Portee |
