@@ -358,7 +358,7 @@ class EvmPaymentRequest(models.Model):
 
     def _get_payment_partner(self):
         self.ensure_one()
-        return self.case_id.patient_partner_id or self.patient_user_id.partner_id
+        return self.case_id.service_provider_id
 
     def _get_payment_reference(self):
         self.ensure_one()
@@ -372,7 +372,7 @@ class EvmPaymentRequest(models.Model):
         self.ensure_one()
         partner = self._get_payment_partner()
         if not partner:
-            raise ValidationError(_("Aucun partenaire patient n'est disponible pour creer le paiement Odoo."))
+            raise ValidationError(_("Aucun prestataire n'est renseigne sur le dossier pour creer le paiement Odoo."))
 
         preferred_payment_method_line = partner.with_company(self.env.company).property_outbound_payment_method_line_id
         compatible_journals = self.env["account.journal"].sudo().search(
@@ -403,7 +403,7 @@ class EvmPaymentRequest(models.Model):
             "company_id": self.env.company.id,
             "partner_id": partner.id,
             "payment_type": "outbound",
-            "partner_type": "customer",
+            "partner_type": "supplier",
             "amount": self.amount_total,
             "currency_id": self.currency_id.id,
             "journal_id": journal.id,
@@ -422,11 +422,11 @@ class EvmPaymentRequest(models.Model):
         if payment.company_id.id != expected_values["company_id"]:
             mismatches.append(_("la societe du paiement lie ne correspond pas a la demande"))
         if payment.partner_id.id != expected_values["partner_id"]:
-            mismatches.append(_("le partenaire du paiement lie ne correspond pas au patient"))
+            mismatches.append(_("le partenaire du paiement lie ne correspond pas au prestataire"))
         if payment.payment_type != expected_values["payment_type"]:
             mismatches.append(_("le type du paiement lie n'est pas un paiement sortant"))
         if payment.partner_type != expected_values["partner_type"]:
-            mismatches.append(_("le type de partenaire du paiement lie n'est pas conforme"))
+            mismatches.append(_("le type de partenaire du paiement lie n'est pas conforme au paiement du prestataire"))
         if payment.currency_id.compare_amounts(payment.amount, expected_values["amount"]) != 0:
             mismatches.append(_("le montant du paiement lie ne correspond pas au montant valide"))
         if payment.currency_id.id != expected_values["currency_id"]:

@@ -79,6 +79,11 @@ class TestEvmSecurity(TransactionCase):
         patient_user = new_test_user(self.env, login="patient1", groups="evm.group_evm_patient")
         other_patient_user = new_test_user(self.env, login="patient2", groups="evm.group_evm_patient")
         fondation_user = new_test_user(self.env, login="fondation1", groups="evm.group_evm_fondation")
+        service_provider = self.env["res.partner"].create(
+            {"name": "Prestataire Securite", "email": "prestataire.securite@example.com"}
+        )
+        self.env["res.partner.bank"].create({"acc_number": "BE10000000000008", "partner_id": service_provider.id})
+        service_provider.write({"evm_is_service_provider": True})
 
         case_1 = self.env["evm.case"].create(
             {
@@ -132,6 +137,7 @@ class TestEvmSecurity(TransactionCase):
             "patient_user": patient_user,
             "other_patient_user": other_patient_user,
             "fondation_user": fondation_user,
+            "service_provider": service_provider,
             "case_1": case_1,
             "case_2": case_2,
             "case_pending_same_patient": case_pending_same_patient,
@@ -381,6 +387,7 @@ class TestEvmSecurity(TransactionCase):
                 "patient_name": "Patient Brouillon",
                 "patient_email": "patient.brouillon@example.com",
                 "requested_session_count": 6,
+                "service_provider_id": fixture["service_provider"].id,
             }
         )
 

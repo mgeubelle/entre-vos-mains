@@ -35,6 +35,11 @@ class TestEvmPaymentRequestWebTour(HttpCase):
             groups="evm.group_evm_fondation",
             name="Fondation Tour Paiement",
         )
+        cls.service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Tour Paiement", "email": "prestataire.tour.paiement@example.com"}
+        )
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000006", "partner_id": cls.service_provider.id})
+        cls.service_provider.write({"evm_is_service_provider": True})
         cls.accepted_case = cls.env["evm.case"].create(
             {
                 "name": "Dossier patient tour paiement externe",
@@ -43,6 +48,7 @@ class TestEvmPaymentRequestWebTour(HttpCase):
                 "state": "accepted",
                 "requested_session_count": 20,
                 "authorized_session_count": 12,
+                "service_provider_id": cls.service_provider.id,
             }
         )
         cls.payment_request = cls.env["evm.payment_request"].with_user(cls.patient_user).create(

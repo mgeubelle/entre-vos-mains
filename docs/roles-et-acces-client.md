@@ -105,6 +105,20 @@ Resultat :
 - la fondation peut instruire les dossiers sans contournement manuel
 - l'administration conserve un acces complet pour piloter la plateforme
 
+## Prestataires
+
+Le parcours dossier et paiement inclut desormais la notion de `prestataire`.
+
+- la `Fondation` et l'`Admin` peuvent marquer un contact comme prestataire EVM
+- un contact ne peut etre marque prestataire que si sa fiche contient au minimum un nom, un email et un compte bancaire
+- la `Fondation` et l'`Admin` peuvent definir un prestataire par defaut sur la fiche contact du kine
+- le `Kine` doit choisir un prestataire lors de la soumission d'un dossier
+- si un prestataire par defaut est defini sur la fiche contact du kine, il est preselectionne sur le formulaire de creation du dossier
+- la `Fondation` et l'`Admin` peuvent modifier le prestataire directement sur le dossier en back-office
+- lors de la validation d'une demande de paiement, le beneficiaire du paiement Odoo est le prestataire du dossier, pas le patient
+
+Cette regle aligne le workflow avec le fonctionnement retenu: la fondation paie le prestataire pour le compte du patient.
+
 ## Point d'attention
 
 Ce document decrit le socle d'acces retenu a ce stade du projet.  

@@ -30,6 +30,8 @@ sont introduits progressivement au fil des stories.
         "data/ir_sequence_data.xml",
         "data/mail_templates.xml",
         "data/scheduled_actions.xml",
+        "views/res_partner_views.xml",
+        "views/res_users_views.xml",
         "views/evm_case_views.xml",
         "views/evm_payment_request_views.xml",
         "views/res_config_settings_views.xml",

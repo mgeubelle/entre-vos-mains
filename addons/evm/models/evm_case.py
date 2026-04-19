@@ -50,6 +50,13 @@ class EvmCase(models.Model):
         string="Contact patient",
         copy=False,
     )
+    service_provider_id = fields.Many2one(
+        "res.partner",
+        index=True,
+        string="Prestataire",
+        tracking=True,
+        domain=[("evm_is_service_provider", "=", True)],
+    )
     requested_session_count = fields.Integer(
         string="Seances demandees",
         tracking=True,
@@ -122,7 +129,7 @@ class EvmCase(models.Model):
 
     _workflow_only_write_fields = {"state", "patient_user_id", "patient_partner_id"}
     _kine_protected_write_fields = {"authorized_session_count", "kine_user_id", "patient_user_id", "patient_partner_id"}
-    _kine_draft_only_fields = {"name", "patient_name", "patient_email", "requested_session_count"}
+    _kine_draft_only_fields = {"name", "patient_name", "patient_email", "requested_session_count", "service_provider_id"}
     _submitted_locked_write_fields = {"name", "kine_user_id", "patient_name", "patient_email", "requested_session_count"}
     _decision_locked_write_fields = {
         "authorized_session_count",
@@ -169,6 +176,20 @@ class EvmCase(models.Model):
                 raise ValidationError(
                     _("Le nombre de seances autorisees ne peut pas depasser le nombre de seances demandees.")
                 )
+
+    @api.constrains("service_provider_id")
+    def _check_service_provider_consistency(self):
+        for record in self:
+            if record.service_provider_id and not record.service_provider_id.evm_is_service_provider:
+                raise ValidationError(_("Le prestataire selectionne doit etre marque comme prestataire EVM."))
+
+    @api.model
+    def _get_service_provider_domain(self):
+        return [("evm_is_service_provider", "=", True)]
+
+    @api.model
+    def _get_available_service_providers(self):
+        return self.env["res.partner"].sudo().search(self._get_service_provider_domain(), order="name asc, id asc")
 
     def _get_annual_session_cap(self):
         raw_value = self.env["ir.config_parameter"].sudo().get_param("evm.annual_session_cap", default="0")
@@ -620,9 +641,11 @@ class EvmCase(models.Model):
         cleaned_values = {
             "patient_name": (values.get("patient_name") or "").strip(),
             "patient_email": (values.get("patient_email") or "").strip(),
+            "service_provider_id": False,
         }
         errors = {}
         requested_session_count = values.get("requested_session_count")
+        service_provider_id = values.get("service_provider_id")
 
         if not cleaned_values["patient_name"]:
             errors["patient_name"] = _("Veuillez renseigner le nom du patient.")
@@ -639,6 +662,17 @@ class EvmCase(models.Model):
 
         if cleaned_values["requested_session_count"] <= 0:
             errors["requested_session_count"] = _("Veuillez renseigner un nombre de seances strictement positif.")
+
+        try:
+            service_provider_id = int(service_provider_id or 0)
+        except (TypeError, ValueError):
+            service_provider_id = 0
+
+        service_provider = self._get_available_service_providers().filtered(lambda partner: partner.id == service_provider_id)[:1]
+        if not service_provider:
+            errors["service_provider_id"] = _("Veuillez selectionner un prestataire valide.")
+        else:
+            cleaned_values["service_provider_id"] = service_provider.id
 
         return cleaned_values, errors
 
@@ -694,6 +728,7 @@ class EvmCase(models.Model):
                     "patient_name": record.patient_name,
                     "patient_email": record.patient_email,
                     "requested_session_count": record.requested_session_count,
+                    "service_provider_id": record.service_provider_id.id,
                 }
             )
             if errors:
@@ -704,6 +739,7 @@ class EvmCase(models.Model):
                     "patient_name": cleaned_values["patient_name"],
                     "patient_email": cleaned_values["patient_email"],
                     "requested_session_count": cleaned_values["requested_session_count"],
+                    "service_provider_id": cleaned_values["service_provider_id"],
                     "state": "pending",
                     **record._get_existing_patient_portal_binding_values(),
                 }

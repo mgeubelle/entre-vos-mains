@@ -34,6 +34,17 @@ class TestEvmKinePortal(HttpCase):
             name="Patient Portail",
         )
         cls.patient_password = cls.patient_user.login
+        cls.default_service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Portail", "email": "prestataire.portail@example.com"}
+        )
+        cls.alternative_service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Portail Bis", "email": "prestataire.portail.bis@example.com"}
+        )
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000003", "partner_id": cls.default_service_provider.id})
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000004", "partner_id": cls.alternative_service_provider.id})
+        cls.default_service_provider.write({"evm_is_service_provider": True})
+        cls.alternative_service_provider.write({"evm_is_service_provider": True})
+        cls.kine_user.partner_id.write({"evm_default_service_provider_id": cls.default_service_provider.id})
 
         cls.own_case = cls.env["evm.case"].create(
             {
@@ -43,6 +54,7 @@ class TestEvmKinePortal(HttpCase):
                 "state": "pending",
                 "requested_session_count": 24,
                 "authorized_session_count": 18,
+                "service_provider_id": cls.default_service_provider.id,
             }
         )
         cls.own_case.message_post(body="Commentaire visible.", subtype_xmlid="mail.mt_comment")
@@ -53,6 +65,7 @@ class TestEvmKinePortal(HttpCase):
                 "kine_user_id": cls.other_kine_user.id,
                 "state": "accepted",
                 "requested_session_count": 10,
+                "service_provider_id": cls.alternative_service_provider.id,
             }
         )
         cls.closed_case = cls.env["evm.case"].create(
@@ -63,6 +76,7 @@ class TestEvmKinePortal(HttpCase):
                 "state": "closed",
                 "requested_session_count": 12,
                 "authorized_session_count": 12,
+                "service_provider_id": cls.default_service_provider.id,
             }
         )
 
@@ -157,7 +171,9 @@ class TestEvmKinePortal(HttpCase):
         self.assertIn("Creer un dossier", form_response.text)
         self.assertIn("Nom du patient", form_response.text)
         self.assertIn("Adresse e-mail du patient", form_response.text)
+        self.assertIn("Prestataire", form_response.text)
         self.assertIn("Nombre maximum de seances demandees", form_response.text)
+        self.assertIn(f'<option value="{self.default_service_provider.id}" selected', form_response.text)
 
         submit_response = self.url_open(
             "/my/evm/cases/create",
@@ -165,6 +181,7 @@ class TestEvmKinePortal(HttpCase):
                 "csrf_token": self._extract_csrf_token(form_response.text),
                 "patient_name": "Patient Nouveau",
                 "patient_email": "patient.nouveau@example.com",
+                "service_provider_id": str(self.alternative_service_provider.id),
                 "requested_session_count": "16",
             },
             allow_redirects=False,
@@ -185,6 +202,7 @@ class TestEvmKinePortal(HttpCase):
         )
         self.assertEqual(len(case), 1)
         self.assertEqual(case.state, "pending")
+        self.assertEqual(case.service_provider_id, self.alternative_service_provider)
         self.assertRegex(case.name, r"^Dossier \d{6}$")
         self.assertNotEqual(case.name, "Patient Nouveau")
         self.assertTrue(any("Demande initiale soumise" in body for body in case.message_ids.mapped("body")))
@@ -199,6 +217,7 @@ class TestEvmKinePortal(HttpCase):
                 "csrf_token": Request.csrf_token(self),
                 "patient_name": "Patient Incomplet",
                 "patient_email": "",
+                "service_provider_id": "",
                 "requested_session_count": "0",
             },
         )
@@ -207,6 +226,7 @@ class TestEvmKinePortal(HttpCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Veuillez corriger les erreurs ci-dessous.", response_text)
         self.assertIn("Veuillez renseigner l'adresse e-mail du patient.", response_text)
+        self.assertIn("Veuillez selectionner un prestataire valide.", response_text)
         self.assertIn("Veuillez renseigner un nombre de seances strictement positif.", response_text)
         self.assertIn('value="Patient Incomplet"', response_text)
         self.assertFalse(

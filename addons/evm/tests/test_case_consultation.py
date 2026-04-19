@@ -12,6 +12,11 @@ class TestEvmCaseConsultation(TransactionCase):
         super().setUpClass()
         cls.kine_user = new_test_user(cls.env, login="kine_consult", groups="evm.group_evm_kine")
         cls.patient_user = new_test_user(cls.env, login="patient_consult", groups="evm.group_evm_patient")
+        cls.service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Consultation", "email": "prestataire.consultation@example.com"}
+        )
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000001", "partner_id": cls.service_provider.id})
+        cls.service_provider.write({"evm_is_service_provider": True})
 
     def _create_workflow_payment_requests(self, values):
         payment_requests = self.env["evm.payment_request"].with_context(
@@ -28,6 +33,7 @@ class TestEvmCaseConsultation(TransactionCase):
         self.assertIn("sessions_consumed", case_model._fields)
         self.assertIn("remaining_session_count", case_model._fields)
         self.assertIn("patient_display_name", case_model._fields)
+        self.assertIn("service_provider_id", case_model._fields)
         self.assertTrue(case_model._fields["name"].tracking)
         self.assertTrue(case_model._fields["state"].tracking)
         self.assertTrue(case_model._fields["requested_session_count"].tracking)
@@ -40,6 +46,7 @@ class TestEvmCaseConsultation(TransactionCase):
                 "kine_user_id": self.kine_user.id,
                 "patient_user_id": self.patient_user.id,
                 "requested_session_count": 12,
+                "service_provider_id": self.service_provider.id,
             }
         )
 
@@ -58,6 +65,7 @@ class TestEvmCaseConsultation(TransactionCase):
                 "state": "accepted",
                 "requested_session_count": 14,
                 "authorized_session_count": 12,
+                "service_provider_id": self.service_provider.id,
             }
         )
 
@@ -108,6 +116,7 @@ class TestEvmCaseConsultation(TransactionCase):
                 "state": "accepted",
                 "requested_session_count": 6,
                 "authorized_session_count": 3,
+                "service_provider_id": self.service_provider.id,
             }
         )
 
@@ -137,6 +146,7 @@ class TestEvmCaseConsultation(TransactionCase):
             {
                 "name": "Dossier historise",
                 "kine_user_id": self.kine_user.id,
+                "service_provider_id": self.service_provider.id,
             }
         )
 
@@ -152,6 +162,7 @@ class TestEvmCaseConsultation(TransactionCase):
                 "patient_name": "Patient Creation",
                 "patient_email": "patient.creation@example.com",
                 "requested_session_count": 14,
+                "service_provider_id": self.service_provider.id,
             }
         )
         generated_name = case.name
@@ -191,6 +202,7 @@ class TestEvmCaseConsultation(TransactionCase):
                 "patient_name": "Patient Pending",
                 "patient_email": "patient.pending@example.com",
                 "requested_session_count": 6,
+                "service_provider_id": self.service_provider.id,
             }
         )
 
@@ -204,6 +216,7 @@ class TestEvmCaseConsultation(TransactionCase):
         missing_values_case = self.env["evm.case"].create(
             {
                 "kine_user_id": self.kine_user.id,
+                "service_provider_id": self.service_provider.id,
             }
         )
         invalid_sessions_case = self.env["evm.case"].create(
@@ -212,6 +225,7 @@ class TestEvmCaseConsultation(TransactionCase):
                 "patient_name": "Patient Invalide",
                 "patient_email": "patient.invalide@example.com",
                 "requested_session_count": 0,
+                "service_provider_id": self.service_provider.id,
             }
         )
 
@@ -230,9 +244,33 @@ class TestEvmCaseConsultation(TransactionCase):
                 "patient_name": "Patient Bloque",
                 "patient_email": "patient.bloque@example.com",
                 "requested_session_count": 8,
+                "service_provider_id": self.service_provider.id,
                 "state": "pending",
             }
         )
 
         with self.assertRaisesRegex(ValidationError, "brouillon"):
             case.action_submit_to_pending()
+
+    def test_service_provider_flag_requires_email_and_bank_account(self):
+        partner_without_email = self.env["res.partner"].create({"name": "Prestataire Sans Email"})
+        with self.assertRaisesRegex(ValidationError, "adresse e-mail"):
+            partner_without_email.write({"evm_is_service_provider": True})
+
+        partner_without_bank = self.env["res.partner"].create(
+            {"name": "Prestataire Sans Banque", "email": "prestataire.sans.banque@example.com"}
+        )
+        with self.assertRaisesRegex(ValidationError, "compte bancaire"):
+            partner_without_bank.write({"evm_is_service_provider": True})
+
+    def test_contact_default_service_provider_requires_flagged_provider_and_blocks_unflag(self):
+        kine_contact = self.kine_user.partner_id
+        non_provider = self.env["res.partner"].create({"name": "Contact Non Prestataire"})
+
+        with self.assertRaisesRegex(ValidationError, "prestataire EVM"):
+            kine_contact.write({"evm_default_service_provider_id": non_provider.id})
+
+        kine_contact.write({"evm_default_service_provider_id": self.service_provider.id})
+
+        with self.assertRaisesRegex(ValidationError, "prestataire par defaut"):
+            self.service_provider.write({"evm_is_service_provider": False})

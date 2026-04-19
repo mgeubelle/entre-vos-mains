@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="evm_res_users_view_form" model="ir.ui.view">
+        <field name="name">res.users.form.evm.service.provider</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='other_preferences']" position="inside">
+                <field
+                    name="evm_default_service_provider_id"
+                    groups="evm.group_evm_fondation,evm.group_evm_admin"
+                    domain="[('evm_is_service_provider', '=', True)]"
+                />
+            </xpath>
+        </field>
+    </record>
+</odoo>

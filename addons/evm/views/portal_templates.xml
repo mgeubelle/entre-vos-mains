@@ -147,6 +147,15 @@
                                     <div class="fw-semibold" t-esc="case.requested_session_count"/>
                                 </div>
                                 <div class="col-md-6">
+                                    <p class="text-muted mb-1">Prestataire</p>
+                                    <div class="fw-semibold">
+                                        <t t-if="case.service_provider_id">
+                                            <span t-esc="case.service_provider_id.display_name"/>
+                                        </t>
+                                        <t t-else="">Non renseigne</t>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
                                     <p class="text-muted mb-1">Seances autorisees</p>
                                     <div class="fw-semibold">
                                         <t t-if="case.authorized_session_count">
@@ -896,6 +905,29 @@
                                     />
                                     <div t-if="errors.get('patient_email')" class="invalid-feedback d-block">
                                         <t t-esc="errors.get('patient_email')"/>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="service_provider_id" class="form-label">Prestataire</label>
+                                    <select
+                                        id="service_provider_id"
+                                        name="service_provider_id"
+                                        t-attf-class="form-select #{'is-invalid' if errors.get('service_provider_id') else ''}"
+                                        required="required"
+                                    >
+                                        <option value="">Selectionnez un prestataire</option>
+                                        <option
+                                            t-foreach="service_providers"
+                                            t-as="service_provider"
+                                            t-att-value="service_provider.id"
+                                            t-att-selected="str(service_provider.id) == str(form_values.get('service_provider_id', '')) and 'selected' or None"
+                                        >
+                                            <t t-esc="service_provider.display_name"/>
+                                        </option>
+                                    </select>
+                                    <div t-if="errors.get('service_provider_id')" class="invalid-feedback d-block">
+                                        <t t-esc="errors.get('service_provider_id')"/>
                                     </div>
                                 </div>
 

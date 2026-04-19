@@ -16,6 +16,11 @@ class TestEvmCaseReview(TransactionCase):
         cls.fondation_user = new_test_user(cls.env, login="fondation_review", groups="evm.group_evm_fondation")
         cls.case_model = cls.env["evm.case"]
         cls.config_parameters = cls.env["ir.config_parameter"].sudo()
+        cls.service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Review", "email": "prestataire.review@example.com"}
+        )
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000002", "partner_id": cls.service_provider.id})
+        cls.service_provider.write({"evm_is_service_provider": True})
 
     def setUp(self):
         super().setUp()
@@ -29,6 +34,7 @@ class TestEvmCaseReview(TransactionCase):
                 "patient_name": f"Patient Review {suffix}",
                 "patient_email": f"patient.review.{suffix.lower()}@example.com",
                 "requested_session_count": requested,
+                "service_provider_id": self.service_provider.id,
             }
         )
         case.action_submit_to_pending()
@@ -49,6 +55,7 @@ class TestEvmCaseReview(TransactionCase):
                 "patient_email": f"patient.closure.{suffix.lower()}@example.com",
                 "requested_session_count": requested,
                 "authorized_session_count": authorized,
+                "service_provider_id": self.service_provider.id,
                 "state": "accepted",
                 "foundation_decision_user_id": self.fondation_user.id,
                 "foundation_decision_date": decision_date or fields.Date.context_today(self.case_model),
@@ -555,6 +562,7 @@ class TestEvmCaseReview(TransactionCase):
         self.assertIn('name="action_close"', form_arch)
         self.assertIn('name="patient_name" readonly="state != \'draft\'"', form_arch)
         self.assertIn('name="requested_session_count" readonly="state != \'draft\'"', form_arch)
+        self.assertIn('name="service_provider_id"', form_arch)
         self.assertIn('name="annual_session_cap_remaining"', form_arch)
         self.assertIn("evm_annual_session_cap", self.env["res.config.settings"]._fields)
         self.assertIn("evm_case_closure_delay_days", self.env["res.config.settings"]._fields)

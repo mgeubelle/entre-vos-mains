@@ -39,6 +39,11 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
             groups="evm.group_evm_patient",
             name="Autre Patient",
         )
+        cls.service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Paiement Portail", "email": "prestataire.paiement.portail@example.com"}
+        )
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000005", "partner_id": cls.service_provider.id})
+        cls.service_provider.write({"evm_is_service_provider": True})
         cls.accepted_case = cls.env["evm.case"].create(
             {
                 "name": "Dossier patient portail",
@@ -47,6 +52,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "state": "accepted",
                 "requested_session_count": 20,
                 "authorized_session_count": 12,
+                "service_provider_id": cls.service_provider.id,
             }
         )
         cls.accepted_case.message_post(body="Commentaire dossier visible patient.", subtype_xmlid="mail.mt_comment")
@@ -59,6 +65,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "state": "accepted",
                 "requested_session_count": 20,
                 "authorized_session_count": 10,
+                "service_provider_id": cls.service_provider.id,
             }
         )
         cls.pending_case = cls.env["evm.case"].create(
@@ -67,6 +74,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
                 "patient_name": "Patient Paiement En Attente",
                 "patient_email": cls.patient_login,
                 "requested_session_count": 8,
+                "service_provider_id": cls.service_provider.id,
             }
         )
         cls.pending_case.action_submit_to_pending()
@@ -192,7 +200,7 @@ class TestEvmPatientPaymentRequestPortal(HttpCase):
         self.assertIn("evm-patient-case-layout", detail_response.text)
         self.assertIn("evm-patient-case-main", detail_response.text)
         self.assertIn("evm-patient-case-aside", detail_response.text)
-        self.assertIn("Echanges sur le dossier", detail_response.text)
+        self.assertIn("Historique d'activité", detail_response.text)
         self.assertIn("Commentaire dossier visible patient.", detail_response.text)
         self.assertNotIn("Note interne dossier invisible patient.", detail_response.text)
         self.assertIn("Demande validee portail", detail_response.text)

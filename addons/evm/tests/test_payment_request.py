@@ -46,6 +46,11 @@ class TestEvmPaymentRequest(TransactionCase):
             login="patient_payment_request_other",
             groups="evm.group_evm_patient",
         )
+        cls.service_provider = cls.env["res.partner"].create(
+            {"name": "Prestataire Paiement", "email": "prestataire.paiement@example.com"}
+        )
+        cls.env["res.partner.bank"].create({"acc_number": "BE10000000000007", "partner_id": cls.service_provider.id})
+        cls.service_provider.write({"evm_is_service_provider": True})
         cls.receivable_account = cls._get_or_create_company_account(
             "asset_receivable",
             "136000",
@@ -56,7 +61,7 @@ class TestEvmPaymentRequest(TransactionCase):
             "236000",
             "Compte fournisseur EVM",
         )
-        for partner in (cls.patient_user.partner_id, cls.other_patient_user.partner_id):
+        for partner in (cls.patient_user.partner_id, cls.other_patient_user.partner_id, cls.service_provider):
             partner.with_company(cls.env.company).write(
                 {
                     "property_account_receivable_id": cls.receivable_account.id,
@@ -94,6 +99,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "state": "accepted",
                 "requested_session_count": 18,
                 "authorized_session_count": 12,
+                "service_provider_id": cls.service_provider.id,
             }
         )
         cls.pending_case = cls.env["evm.case"].create(
@@ -103,6 +109,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "patient_user_id": cls.patient_user.id,
                 "state": "pending",
                 "requested_session_count": 18,
+                "service_provider_id": cls.service_provider.id,
             }
         )
 
@@ -223,6 +230,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "state": "closed",
                 "requested_session_count": 8,
                 "authorized_session_count": 8,
+                "service_provider_id": self.service_provider.id,
             }
         )
         payment_request = self._create_internal_payment_request(
@@ -242,9 +250,9 @@ class TestEvmPaymentRequest(TransactionCase):
     def test_patient_cannot_inject_system_fields_when_creating_a_request(self):
         existing_payment = self.env["account.payment"].sudo().create(
             {
-                "partner_id": self.patient_user.partner_id.id,
+                "partner_id": self.service_provider.id,
                 "payment_type": "outbound",
-                "partner_type": "customer",
+                "partner_type": "supplier",
                 "amount": 75.0,
                 "journal_id": self.payment_journal.id,
                 "payment_method_line_id": self.payment_journal.outbound_payment_method_line_ids[:1].id,
@@ -437,6 +445,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "patient_user_id": self.other_patient_user.id,
                 "state": "accepted",
                 "requested_session_count": 10,
+                "service_provider_id": self.service_provider.id,
             }
         )
         other_payment_request = self.env["evm.payment_request"].create(
@@ -1080,7 +1089,7 @@ class TestEvmPaymentRequest(TransactionCase):
         self.assertTrue(payment_request.payment_id)
         self.assertEqual(payment_request.payment_id.state, "draft")
         self.assertEqual(payment_request.payment_id.amount, 120.0)
-        self.assertEqual(payment_request.payment_id.partner_id, self.patient_user.partner_id)
+        self.assertEqual(payment_request.payment_id.partner_id, self.service_provider)
         self.assertEqual(payment_request.payment_id.journal_id, self.payment_journal)
         self.assertFalse(payment_request.completion_request_reason)
         self.assertFalse(payment_request.refusal_reason)
@@ -1152,6 +1161,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "state": "accepted",
                 "requested_session_count": 12,
                 "authorized_session_count": 8,
+                "service_provider_id": self.service_provider.id,
             }
         )
         payment_request = self._create_internal_payment_request(
@@ -1243,6 +1253,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "state": "closed",
                 "requested_session_count": 6,
                 "authorized_session_count": 4,
+                "service_provider_id": self.service_provider.id,
             }
         )
         payment_request = self._create_internal_payment_request(
@@ -1276,6 +1287,7 @@ class TestEvmPaymentRequest(TransactionCase):
                 "state": "accepted",
                 "requested_session_count": 10,
                 "authorized_session_count": 3,
+                "service_provider_id": self.service_provider.id,
             }
         )
         payment_request = self._create_internal_payment_request(
@@ -1318,9 +1330,9 @@ class TestEvmPaymentRequest(TransactionCase):
         )
         existing_payment = self.env["account.payment"].sudo().create(
             {
-                "partner_id": self.patient_user.partner_id.id,
+                "partner_id": self.service_provider.id,
                 "payment_type": "outbound",
-                "partner_type": "customer",
+                "partner_type": "supplier",
                 "amount": 75.0,
                 "journal_id": self.payment_journal.id,
                 "payment_method_line_id": (
@@ -1357,9 +1369,9 @@ class TestEvmPaymentRequest(TransactionCase):
         )
         existing_payment = self.env["account.payment"].sudo().create(
             {
-                "partner_id": self.patient_user.partner_id.id,
+                "partner_id": self.service_provider.id,
                 "payment_type": "outbound",
-                "partner_type": "customer",
+                "partner_type": "supplier",
                 "amount": 74.0,
                 "journal_id": self.payment_journal.id,
                 "payment_method_line_id": (

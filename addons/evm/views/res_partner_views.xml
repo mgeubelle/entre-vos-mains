@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="evm_res_partner_view_form" model="ir.ui.view">
+        <field name="name">res.partner.form.evm.service.provider</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='category_id']" position="after">
+                <field name="evm_is_service_provider" groups="evm.group_evm_fondation,evm.group_evm_admin"/>
+                <field
+                    name="evm_default_service_provider_id"
+                    groups="evm.group_evm_fondation,evm.group_evm_admin"
+                    domain="[('evm_is_service_provider', '=', True)]"
+                />
+            </xpath>
+        </field>
+    </record>
+</odoo>

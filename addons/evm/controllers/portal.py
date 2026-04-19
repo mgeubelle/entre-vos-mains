@@ -193,17 +193,25 @@ class EvmCustomerPortal(CustomerPortal):
             lambda message: message.body and (not message.subtype_id or not message.subtype_id.internal)
         ).sorted(lambda message: message.date or message.create_date, reverse=True)
 
+    def _get_service_provider_choices(self):
+        return request.env["evm.case"].sudo()._get_available_service_providers()
+
     def _get_history_author_names(self, messages):
         return {message.id: message.sudo().author_id.display_name for message in messages if message.author_id}
 
     def _prepare_case_creation_values(self, form_values=None, errors=None):
+        prepared_form_values = dict(form_values or {})
+        default_service_provider = request.env.user.partner_id.evm_default_service_provider_id
+        if default_service_provider and not prepared_form_values.get("service_provider_id"):
+            prepared_form_values["service_provider_id"] = str(default_service_provider.id)
         values = self._prepare_portal_layout_values()
         values.update(
             {
                 "page_name": "evm_case_create",
-                "form_values": form_values or {},
+                "form_values": prepared_form_values,
                 "errors": errors or {},
                 "page_error": "Veuillez corriger les erreurs ci-dessous." if errors else False,
+                "service_providers": self._get_service_provider_choices(),
             }
         )
         return values
@@ -623,6 +631,7 @@ class EvmCustomerPortal(CustomerPortal):
             "patient_name": (post.get("patient_name") or "").strip(),
             "patient_email": (post.get("patient_email") or "").strip(),
             "requested_session_count": post.get("requested_session_count") or "",
+            "service_provider_id": (post.get("service_provider_id") or "").strip(),
         }
         cleaned_values, errors = case_model.validate_submission_data(form_values)
         if errors:

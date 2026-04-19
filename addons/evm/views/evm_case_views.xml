@@ -17,6 +17,7 @@
                 <field name="create_date"/>
                 <field name="patient_display_name" string="Patient"/>
                 <field name="patient_email"/>
+                <field name="service_provider_id" optional="hide"/>
                 <field name="requested_session_count"/>
                 <field name="authorized_session_count"/>
                 <field name="foundation_decision_date" optional="hide"/>
@@ -33,6 +34,7 @@
                 <field name="name"/>
                 <field name="patient_name"/>
                 <field name="patient_email"/>
+                <field name="service_provider_id"/>
                 <separator/>
                 <filter name="active" string="Actifs" domain="[('state', '!=', 'closed')]"/>
                 <filter name="pending" string="Soumis" domain="[('state', '=', 'pending')]"/>
@@ -113,6 +115,15 @@
                             <field name="patient_user_id" readonly="1"/>
                             <field name="patient_name" readonly="state != 'draft'"/>
                             <field name="patient_email" readonly="state != 'draft'"/>
+                            <field
+                                name="service_provider_id"
+                                groups="evm.group_evm_kine"
+                                readonly="state != 'draft'"
+                            />
+                            <field
+                                name="service_provider_id"
+                                groups="evm.group_evm_fondation,evm.group_evm_admin"
+                            />
                             <field name="patient_display_name" readonly="1"/>
                         </group>
                     </group>
