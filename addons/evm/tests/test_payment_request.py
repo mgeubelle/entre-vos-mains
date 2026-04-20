@@ -576,15 +576,16 @@ class TestEvmPaymentRequest(TransactionCase):
             ]
         )
         mail_ids_before = self._capture_mail_ids()
-        notification_ids_before = self._capture_notification_ids()
+        mail_notification_ids_before = self._capture_mail_notification_ids()
 
         payment_request.with_user(self.patient_user).action_submit()
 
         notification_mails = self._get_new_mails(mail_ids_before).filtered(
             lambda mail: mail.subject == f"Entre Vos Mains - demande de paiement soumise : {payment_request.name}"
         )
-        inbox_notifications = self._get_new_notifications(notification_ids_before).filtered(
-            lambda message: message.subject == f"Entre Vos Mains - demande de paiement soumise : {payment_request.name}"
+        inbox_notifications = self._get_new_mail_notifications(mail_notification_ids_before).filtered(
+            lambda notification: notification.mail_message_id.subject
+            == f"Entre Vos Mains - demande de paiement soumise : {payment_request.name}"
         )
 
         self.assertTrue(notification_mails or inbox_notifications)
@@ -594,11 +595,13 @@ class TestEvmPaymentRequest(TransactionCase):
             self.assertIn(payment_request.name, notification_mails.body_html)
             self.assertIn("Soumise", notification_mails.body_html)
         if inbox_notifications:
-            self.assertEqual(inbox_notifications.partner_ids, foundation_user.partner_id)
-            self.assertNotIn(self.patient_user.partner_id, inbox_notifications.partner_ids)
-            self.assertNotIn(observer_user.partner_id, inbox_notifications.partner_ids)
-            self.assertIn(payment_request.name, inbox_notifications.body)
-            self.assertIn("Soumise", inbox_notifications.body)
+            self.assertEqual(len(inbox_notifications), 1)
+            self.assertEqual(inbox_notifications.res_partner_id, foundation_user.partner_id)
+            self.assertNotEqual(inbox_notifications.res_partner_id, self.patient_user.partner_id)
+            self.assertNotEqual(inbox_notifications.res_partner_id, observer_user.partner_id)
+            self.assertEqual(inbox_notifications.notification_type, "inbox")
+            self.assertIn(payment_request.name, inbox_notifications.mail_message_id.body)
+            self.assertIn("Soumise", inbox_notifications.mail_message_id.body)
 
     def test_authorized_users_can_post_comments_on_case_and_request(self):
         foundation_user = new_test_user(
